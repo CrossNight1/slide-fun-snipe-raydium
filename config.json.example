@@ -1,0 +1,36 @@
+{
+  "_comment": "Slide-Fun Raydium Sniper — unified config (replaces .env + wallets.json)",
+  "helius_api_key": "PASTE-HELIUS-KEY-HERE",
+
+  "snipe_mode": "raydium",
+  "dry_run": true,
+  "test_mode": false,
+
+  "jito_tip": 0.003,
+  "cu_limit": 200000,
+  "priority_fee": 100000,
+  "slidefun_pump_amount": 0.05,
+  "slidefun_program": "GkF6F9GNPjzkC18Xa3a88xwEc5vwyQDA1iXvFkKBqNDC",
+
+  "main_wallet": {
+    "label": "Main Wallet",
+    "private_key": "PASTE-MAIN-WALLET-KEY-HERE",
+    "sol_amount": 0.1,
+    "enabled": true
+  },
+
+  "bundle_wallets": [
+    {
+      "label": "Sub-wallet 1",
+      "private_key": "PASTE-SUB-WALLET-1-KEY-HERE",
+      "sol_amount": 0.05,
+      "enabled": true
+    },
+    {
+      "label": "Sub-wallet 2",
+      "private_key": "PASTE-SUB-WALLET-2-KEY-HERE",
+      "sol_amount": 0.05,
+      "enabled": false
+    }
+  ]
+}

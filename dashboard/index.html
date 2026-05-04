@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Slide-Fun Sniper Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root{
+    --bg:#0a0b0f;--panel:#111318;--card:#16181f;--border:#1e2130;
+    --accent:#7c5cfc;--accent2:#00d4aa;--accent3:#f59e0b;
+    --red:#ef4444;--green:#22c55e;
+    --text:#e2e8f0;--muted:#64748b;--dim:#2d3548;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+
+  /* ── Header ── */
+  header{background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);padding:16px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+  .logo{display:flex;align-items:center;gap:12px}
+  .logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+  .logo-text h1{font-size:1.1rem;font-weight:700;background:linear-gradient(90deg,#a78bfa,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .logo-text p{font-size:.7rem;color:var(--muted);margin-top:1px}
+  .status-bar{display:flex;align-items:center;gap:16px}
+  .status-pill{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:.72rem;font-weight:600;border:1px solid}
+  .status-pill.dry{border-color:#f59e0b44;background:#f59e0b10;color:#f59e0b}
+  .status-pill.live{border-color:#22c55e44;background:#22c55e10;color:#22c55e}
+  .dot{width:7px;height:7px;border-radius:50%;animation:pulse 2s infinite}
+  .dot.yellow{background:#f59e0b}
+  .dot.green{background:#22c55e}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+  /* ── Layout ── */
+  .main{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto;gap:16px;padding:20px 28px;flex:1}
+  @media(max-width:900px){.main{grid-template-columns:1fr}}
+
+  /* ── Cards ── */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+  .card-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:linear-gradient(90deg,#1a1c26,var(--card))}
+  .card-header h2{font-size:.85rem;font-weight:600;color:var(--text)}
+  .card-icon{font-size:1rem}
+  .card-body{padding:18px}
+
+  /* ── Form inputs ── */
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .form-group{display:flex;flex-direction:column;gap:5px}
+  .form-group.full{grid-column:1/-1}
+  label{font-size:.72rem;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  input,select{background:#0d0e14;border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-family:'Inter',sans-serif;font-size:.82rem;width:100%;outline:none;transition:border .2s}
+  input:focus,select:focus{border-color:var(--accent)}
+  input[type=checkbox]{width:auto}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+  .toggle-row:last-child{border-bottom:none}
+  .toggle-row span{font-size:.82rem;color:var(--text)}
+  .toggle-row small{font-size:.7rem;color:var(--muted);display:block;margin-top:2px}
+  /* Toggle switch - Improved visibility */
+  .switch{position:relative;width:46px;height:24px;flex-shrink:0;display:block}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;inset:0;background:#334155;border-radius:24px;cursor:pointer;transition:.3s;border:1px solid var(--border)}
+  .slider:before{content:'';position:absolute;width:18px;height:18px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.3s;box-shadow:0 2px 4px rgba(0,0,0,0.3)}
+  
+  /* OFF State */
+  input:not(:checked)+.slider{background:#334155}
+  
+  /* ON State */
+  input:checked+.slider{background:var(--green);border-color:#166534;box-shadow:0 0 10px rgba(34,197,94,0.2)}
+  input:checked+.slider:before{transform:translateX(22px)}
+
+  /* Hover effect */
+  .slider:hover{border-color:var(--muted)}
+
+  /* ── Buttons ── */
+  .btn{padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:.82rem;font-weight:600;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),#5b3fc0);color:#fff}
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 20px #7c5cfc40}
+  .btn-secondary{background:var(--dim);color:var(--text)}
+  .btn-secondary:hover{background:#3d4560}
+  .btn-danger{background:linear-gradient(135deg,#7f1d1d,var(--red));color:#fff}
+  .btn-sm{padding:5px 10px;font-size:.75rem;border-radius:6px}
+  .btn-row{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
+
+  /* ── Wallet table ── */
+  .wallet-table{width:100%;border-collapse:collapse;font-size:.79rem}
+  .wallet-table th{color:var(--muted);font-weight:500;text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);font-size:.7rem;text-transform:uppercase}
+  .wallet-table td{padding:8px 8px;border-bottom:1px solid #1a1c26;vertical-align:middle}
+  .wallet-table tr:last-child td{border-bottom:none}
+  .wallet-table input{padding:5px 8px;font-size:.78rem}
+  .wallet-addr{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted)}
+  .wallet-label-input{width:90px}
+  .wallet-sol-input{width:70px}
+  .add-wallet-btn{margin-top:12px;width:100%}
+
+  /* ── Log terminal ── */
+  .log-terminal{grid-column:1/-1;min-height:240px;max-height:340px}
+  .log-body{background:#05060a;padding:14px;font-family:'JetBrains Mono',monospace;font-size:.73rem;line-height:1.7;overflow-y:auto;height:290px;color:#94a3b8}
+  .log-line{white-space:pre-wrap;word-break:break-all}
+  .log-line.ok{color:#22c55e}
+  .log-line.warn{color:#f59e0b}
+  .log-line.err{color:#ef4444}
+  .log-line.snipe{color:#a78bfa;font-weight:600}
+  .log-line.info{color:#94a3b8}
+
+  /* ── Misc ── */
+  .section-sep{margin:14px 0 10px;font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600;display:flex;align-items:center;gap:8px}
+  .section-sep::after{content:'';flex:1;height:1px;background:var(--border)}
+  .badge{padding:2px 7px;border-radius:4px;font-size:.67rem;font-weight:600;font-family:'JetBrains Mono',monospace}
+  .badge-purple{background:#7c5cfc22;color:#a78bfa;border:1px solid #7c5cfc44}
+  .badge-green{background:#22c55e22;color:#22c55e;border:1px solid #22c55e44}
+  .badge-yellow{background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b44}
+  .badge-red{background:#ef444422;color:#ef4444;border:1px solid #ef444444}
+  .saved-toast{position:fixed;bottom:24px;right:24px;background:#22c55e;color:#fff;padding:10px 18px;border-radius:8px;font-size:.82rem;font-weight:600;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;z-index:999}
+  .saved-toast.show{opacity:1;transform:translateY(0)}
+  .mode-select{display:flex;gap:6px;flex-wrap:wrap}
+  .mode-btn{padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--dim);color:var(--muted);cursor:pointer;font-size:.75rem;font-weight:500;transition:all .2s}
+  .mode-btn.active{border-color:var(--accent);background:#7c5cfc20;color:#a78bfa}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div class="logo-text">
+      <h1>Slide-Fun Sniper</h1>
+      <p>Raydium &amp; Bonding Curve Bot</p>
+    </div>
+  </div>
+  <div class="status-bar">
+    <div class="status-pill dry" id="mode-badge"><span class="dot yellow"></span><span id="mode-label">DRY RUN</span></div>
+    <div class="status-pill live" style="border-color:#7c5cfc44;background:#7c5cfc10;color:#a78bfa"><span class="dot" style="background:#a78bfa"></span><span id="snipe-mode-badge">raydium</span></div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ── Global Settings ── -->
+  <div class="card">
+    <div class="card-header"><span class="card-icon">⚙️</span><h2>Global Settings</h2></div>
+    <div class="card-body">
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Helius API Key</label>
+          <input id="helius_api_key" type="password" placeholder="Enter Helius API key"/>
+        </div>
+        <div class="form-group">
+          <label>Jito Tip (SOL)</label>
+          <input id="jito_tip" type="number" step="0.001" min="0"/>
+        </div>
+        <div class="form-group">
+          <label>CU Limit</label>
+          <input id="cu_limit" type="number" step="10000" min="0"/>
+        </div>
+        <div class="form-group">
+          <label>Priority Fee (µ-lam)</label>
+          <input id="priority_fee" type="number" step="10000" min="0"/>
+        </div>
+        <div class="form-group">
+          <label>Slide.fun Buy (SOL)</label>
+          <input id="slidefun_pump_amount" type="number" step="0.01" min="0"/>
+        </div>
+      </div>
+
+      <div class="section-sep">Snipe Mode</div>
+      <div class="mode-select" id="snipe_mode_btns">
+        <div class="mode-btn" data-mode="raydium">🎯 Raydium (safe)</div>
+        <div class="mode-btn" data-mode="slidefun">⚡ Slide.fun (fast)</div>
+        <div class="mode-btn" data-mode="both">🔥 Both</div>
+      </div>
+      <input type="hidden" id="snipe_mode" value="raydium"/>
+
+      <div class="section-sep">Flags</div>
+      <div class="toggle-row">
+        <div><span>Dry Run</span><small>Build TXs but don't send — safe for testing</small></div>
+        <label class="switch"><input type="checkbox" id="dry_run"/><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div><span>Test Mode</span><small>Snipe ANY Raydium pool (bypass Slide.fun check)</small></div>
+        <label class="switch"><input type="checkbox" id="test_mode"/><span class="slider"></span></label>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="loadConfig()">↺ Reload</button>
+        <button class="btn btn-primary" onclick="saveConfig()">💾 Save Config</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Wallets ── -->
+  <div class="card">
+    <div class="card-header"><span class="card-icon">👛</span><h2>Wallets</h2></div>
+    <div class="card-body">
+      <div class="section-sep">Main Wallet</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Label</label>
+          <input id="main_label" type="text" placeholder="Main Wallet"/>
+        </div>
+        <div class="form-group">
+          <label>Buy Amount (SOL)</label>
+          <input id="main_sol_amount" type="number" step="0.01" min="0"/>
+        </div>
+        <div class="form-group full">
+          <label>Private Key (Base58)</label>
+          <input id="main_pk" type="password" placeholder="Leave blank to keep existing"/>
+        </div>
+      </div>
+
+      <div class="section-sep">Bundle Wallets <span class="badge badge-purple" id="bundle-count">0</span></div>
+      <div style="overflow-x:auto">
+        <table class="wallet-table">
+          <thead><tr>
+            <th>On</th><th>Label</th><th>Private Key</th><th>SOL</th><th></th>
+          </tr></thead>
+          <tbody id="wallet-tbody"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-secondary btn-sm add-wallet-btn" onclick="addWallet()">+ Add Sub-wallet</button>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveConfig()">💾 Save Wallets</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Live Logs ── -->
+  <div class="card log-terminal">
+    <div class="card-header" style="justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:8px"><span class="card-icon">📡</span><h2>Live Logs</h2></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="badge badge-green" id="log-conn">● CONNECTED</span>
+        <button class="btn btn-secondary btn-sm" onclick="clearLogs()">Clear</button>
+      </div>
+    </div>
+    <div class="log-body" id="log-body">
+      <div class="log-line info">Connecting to log stream...</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="saved-toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────
+let bundleWallets = [];
+
+// ── Load config from API ──────────────────────────────────────────
+async function loadConfig(){
+  try {
+    const res = await fetch('/api/config');
+    const cfg = await res.json();
+
+    document.getElementById('helius_api_key').value = cfg.helius_api_key || '';
+    document.getElementById('jito_tip').value = cfg.jito_tip ?? 0.003;
+    document.getElementById('cu_limit').value = cfg.cu_limit ?? 200000;
+    document.getElementById('priority_fee').value = cfg.priority_fee ?? 100000;
+    document.getElementById('slidefun_pump_amount').value = cfg.slidefun_pump_amount ?? 0.05;
+    document.getElementById('dry_run').checked = cfg.dry_run ?? true;
+    document.getElementById('test_mode').checked = cfg.test_mode ?? false;
+
+    // Snipe mode
+    document.getElementById('snipe_mode').value = cfg.snipe_mode || 'raydium';
+    setModeBtn(cfg.snipe_mode || 'raydium');
+
+    // Main wallet
+    const mw = cfg.main_wallet || {};
+    document.getElementById('main_label').value = mw.label || 'Main Wallet';
+    document.getElementById('main_pk').value = mw.private_key || '';
+    document.getElementById('main_sol_amount').value = mw.sol_amount ?? 0.1;
+
+    // Bundle wallets
+    bundleWallets = cfg.bundle_wallets || [];
+    renderWallets();
+
+    // Update header badge
+    updateHeaderBadge(cfg.dry_run, cfg.snipe_mode);
+
+  } catch(e){ console.error('Load failed', e); }
+}
+
+// ── Save config to API ────────────────────────────────────────────
+async function saveConfig(){
+  const payload = {
+    helius_api_key: document.getElementById('helius_api_key').value,
+    jito_tip: parseFloat(document.getElementById('jito_tip').value),
+    cu_limit: parseInt(document.getElementById('cu_limit').value),
+    priority_fee: parseInt(document.getElementById('priority_fee').value),
+    slidefun_pump_amount: parseFloat(document.getElementById('slidefun_pump_amount').value),
+    dry_run: document.getElementById('dry_run').checked,
+    test_mode: document.getElementById('test_mode').checked,
+    snipe_mode: document.getElementById('snipe_mode').value,
+    main_wallet: {
+      label: document.getElementById('main_label').value,
+      private_key: document.getElementById('main_pk').value,
+      sol_amount: parseFloat(document.getElementById('main_sol_amount').value),
+      enabled: true
+    },
+    bundle_wallets: bundleWallets
+  };
+
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(res.ok){
+      showToast('✅ Config saved!');
+      updateHeaderBadge(payload.dry_run, payload.snipe_mode);
+    } else {
+      showToast('❌ Save failed', true);
+    }
+  } catch(e){ showToast('❌ Network error', true); }
+}
+
+// ── Wallet rendering ──────────────────────────────────────────────
+function renderWallets(){
+  const tbody = document.getElementById('wallet-tbody');
+  document.getElementById('bundle-count').textContent = bundleWallets.length;
+  tbody.innerHTML = '';
+  bundleWallets.forEach((w,i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><label class="switch" style="margin:0"><input type="checkbox" ${w.enabled?'checked':''} onchange="bundleWallets[${i}].enabled=this.checked"/><span class="slider"></span></label></td>
+      <td><input class="wallet-label-input" value="${esc(w.label)}" oninput="bundleWallets[${i}].label=this.value" placeholder="Wallet ${i+1}"/></td>
+      <td><input style="width:160px;font-family:monospace;font-size:.72rem" type="password" value="${esc(w.private_key)}" oninput="bundleWallets[${i}].private_key=this.value" placeholder="Base58 key"/></td>
+      <td><input class="wallet-sol-input" type="number" step="0.01" value="${w.sol_amount}" oninput="bundleWallets[${i}].sol_amount=parseFloat(this.value)"/></td>
+      <td><button class="btn btn-danger btn-sm" onclick="removeWallet(${i})">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function addWallet(){
+  bundleWallets.push({label:`Sub-wallet ${bundleWallets.length+1}`,private_key:'',sol_amount:0.05,enabled:true});
+  renderWallets();
+}
+function removeWallet(i){ bundleWallets.splice(i,1); renderWallets(); }
+function esc(s){ return (s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+// ── Snipe mode buttons ────────────────────────────────────────────
+function setModeBtn(mode){
+  document.querySelectorAll('.mode-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.mode===mode);
+  });
+  document.getElementById('snipe-mode-badge').textContent = mode;
+}
+document.querySelectorAll('.mode-btn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.getElementById('snipe_mode').value = b.dataset.mode;
+    setModeBtn(b.dataset.mode);
+  });
+});
+
+// ── Header badge ──────────────────────────────────────────────────
+function updateHeaderBadge(dryRun, mode){
+  const badge = document.getElementById('mode-badge');
+  const label = document.getElementById('mode-label');
+  if(dryRun){
+    badge.className='status-pill dry';
+    badge.querySelector('.dot').className='dot yellow';
+    label.textContent='DRY RUN';
+  } else {
+    badge.className='status-pill live';
+    badge.querySelector('.dot').className='dot green';
+    label.textContent='LIVE';
+  }
+  document.getElementById('snipe-mode-badge').textContent = mode || 'raydium';
+}
+
+// ── Toast notification ────────────────────────────────────────────
+function showToast(msg, isErr=false){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = isErr ? '#ef4444' : '#22c55e';
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2800);
+}
+
+// ── Live log SSE stream ───────────────────────────────────────────
+const logBody = document.getElementById('log-body');
+const connBadge = document.getElementById('log-conn');
+const MAX_LOG_LINES = 300;
+let logLines = [];
+
+function classifyLine(line){
+  if(/\[OK\]|✅|confirmed/.test(line)) return 'ok';
+  if(/\[WARN\]|⏳/.test(line)) return 'warn';
+  if(/\[ERROR\]|❌|failed|error/i.test(line)) return 'err';
+  if(/SNIPE|🚀|GRAD|BUNDLE/.test(line)) return 'snipe';
+  return 'info';
+}
+
+function appendLog(text){
+  logLines.push(text);
+  if(logLines.length > MAX_LOG_LINES) logLines.shift();
+  const div = document.createElement('div');
+  div.className = 'log-line ' + classifyLine(text);
+  div.textContent = text;
+  logBody.appendChild(div);
+  if(logBody.children.length > MAX_LOG_LINES) logBody.removeChild(logBody.firstChild);
+  logBody.scrollTop = logBody.scrollHeight;
+}
+
+function clearLogs(){ logBody.innerHTML=''; logLines=[]; }
+
+function connectSSE(){
+  const es = new EventSource('/api/logs');
+  connBadge.textContent='● CONNECTED';
+  connBadge.className='badge badge-green';
+  es.onmessage = e => appendLog(e.data);
+  es.onerror = () => {
+    connBadge.textContent='● RECONNECTING...';
+    connBadge.className='badge badge-yellow';
+    es.close();
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+loadConfig();
+connectSSE();
+</script>
+</body>
+</html>
