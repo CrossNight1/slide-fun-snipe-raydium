@@ -1,5 +1,10 @@
 [
-  {"private_key": "PASTE_BASE58_PRIVATE_KEY_OF_WALLET_1_HERE"},
-  {"private_key": "PASTE_BASE58_PRIVATE_KEY_OF_WALLET_2_HERE"},
-  {"private_key": "PASTE_BASE58_PRIVATE_KEY_OF_WALLET_3_HERE"}
+  {
+    "private_key": "PASTE-SUB-WALLET-1-KEY-HERE",
+    "sol_amount": 0.05
+  },
+  {
+    "private_key": "PASTE-SUB-WALLET-2-KEY-HERE",
+    "sol_amount": 0.05
+  }
 ]
