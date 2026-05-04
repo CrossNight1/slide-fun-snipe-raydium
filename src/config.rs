@@ -38,6 +38,8 @@ pub struct AppConfig {
     pub priority_fee: u64,
     pub slidefun_pump_amount: f64,
     pub slidefun_program: Option<String>,
+    #[serde(default)]
+    pub target_mints: Vec<String>,
     pub main_wallet: WalletEntry,
     pub bundle_wallets: Vec<WalletEntry>,
 }
@@ -54,6 +56,7 @@ impl Default for AppConfig {
             priority_fee: 100_000,
             slidefun_pump_amount: 0.05,
             slidefun_program: None,
+            target_mints: vec![],
             main_wallet: WalletEntry {
                 label: "Main Wallet".to_string(),
                 private_key: String::new(),
@@ -101,6 +104,7 @@ impl AppConfig {
             priority_fee: env::var("PRIORITY_FEE").ok().and_then(|v| v.parse().ok()).unwrap_or(100_000),
             slidefun_pump_amount: env::var("SLIDEFUN_PUMP_AMOUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.05),
             slidefun_program: env::var("SLIDEFUN_PROGRAM").ok().filter(|v| !v.is_empty()),
+            target_mints: vec![],
             main_wallet: WalletEntry {
                 label: "Main Wallet".to_string(),
                 private_key: env::var("PRIVATE_KEY").unwrap_or_default(),
@@ -193,6 +197,15 @@ impl Config {
                 Keypair::from_bytes(&bytes).ok()
             })
             .collect()
+    }
+
+    /// Check if a mint is in the target whitelist.
+    /// If target_mints is empty, returns TRUE (snipes everything).
+    pub fn is_whitelisted(&self, mint: &str) -> bool {
+        if self.app.target_mints.is_empty() {
+            return true;
+        }
+        self.app.target_mints.iter().any(|m| m == mint)
     }
 }
 

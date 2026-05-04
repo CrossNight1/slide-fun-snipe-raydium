@@ -179,6 +179,11 @@
         <label class="switch"><input type="checkbox" id="test_mode"/><span class="slider"></span></label>
       </div>
 
+      <div class="section-sep">Target Mints Whitelist</div>
+      <div style="margin-bottom:10px"><small style="color:var(--muted)">If empty, snipes EVERYTHING. If populated, only snipes these addresses.</small></div>
+      <div id="mints-container" style="display:flex;flex-direction:column;gap:8px"></div>
+      <button class="btn btn-secondary btn-sm" onclick="addMint()" style="margin-top:8px;width:100%">+ Add Target Mint</button>
+
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="loadConfig()">↺ Reload</button>
         <button class="btn btn-primary" onclick="saveConfig()">💾 Save Config</button>
@@ -244,6 +249,7 @@
 <script>
 // ── State ──────────────────────────────────────────────────────────
 let bundleWallets = [];
+let targetMints = [];
 
 // ── Load config from API ──────────────────────────────────────────
 async function loadConfig(){
@@ -262,6 +268,10 @@ async function loadConfig(){
     // Snipe mode
     document.getElementById('snipe_mode').value = cfg.snipe_mode || 'raydium';
     setModeBtn(cfg.snipe_mode || 'raydium');
+
+    // Target Mints
+    targetMints = cfg.target_mints || [];
+    renderMints();
 
     // Main wallet
     const mw = cfg.main_wallet || {};
@@ -290,6 +300,7 @@ async function saveConfig(){
     dry_run: document.getElementById('dry_run').checked,
     test_mode: document.getElementById('test_mode').checked,
     snipe_mode: document.getElementById('snipe_mode').value,
+    target_mints: targetMints,
     main_wallet: {
       label: document.getElementById('main_label').value,
       private_key: document.getElementById('main_pk').value,
@@ -313,6 +324,24 @@ async function saveConfig(){
     }
   } catch(e){ showToast('❌ Network error', true); }
 }
+
+// ── Target Mints rendering ────────────────────────────────────────
+function renderMints(){
+  const container = document.getElementById('mints-container');
+  container.innerHTML = '';
+  targetMints.forEach((m,i) => {
+    const div = document.createElement('div');
+    div.style.display = 'flex';
+    div.style.gap = '8px';
+    div.innerHTML = `
+      <input style="font-family:monospace;font-size:.72rem" value="${esc(m)}" oninput="targetMints[${i}]=this.value" placeholder="Mint Address"/>
+      <button class="btn btn-danger btn-sm" onclick="removeMint(${i})">✕</button>
+    `;
+    container.appendChild(div);
+  });
+}
+function addMint(){ targetMints.push(''); renderMints(); }
+function removeMint(i){ targetMints.splice(i,1); renderMints(); }
 
 // ── Wallet rendering ──────────────────────────────────────────────
 function renderWallets(){

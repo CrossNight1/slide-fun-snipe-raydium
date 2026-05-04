@@ -1,69 +1,74 @@
-# 🛠️ Quick Start Cheat Sheet
+# 📔 Advanced User Guide
 
-> For the full guide see `README.md`. This file is your day-to-day reference.
-
----
-
-## First-time setup (run once)
-
-```bash
-# 1. Install Rust (skip if already installed)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# 2. Enter the project
-cd /Users/leoinv/Documents/CODE/slide-fun-snipe-raydium
-
-# 3. Create config
-cp .env.example .env
-# → Edit .env: add PRIVATE_KEY and HELIUS_API_KEY
-
-# 4. (Optional) Add sub-wallets
-cp wallets.json.example wallets.json
-# → Edit wallets.json: add private_key entries
-
-# 5. Compile (takes 2-5 min the first time)
-cargo build --release
-```
+This guide explains the "Magic" under the hood of the Slide-Fun Sniper.
 
 ---
 
-## Run the bot
+## 🏗️ Architecture: How it Works
 
-```bash
-# Safe test (no real SOL sent) — DRY_RUN=true in .env
-cargo run --release
+### The Dual-Listener Loop
+The bot connects to Solana via **WebSockets**. It listens to two "streams" of data at once:
 
-# Go live — set DRY_RUN=false in .env first
-cargo run --release
-```
-
----
-
-## Key `.env` settings to change before going live
-
-| Setting | Safe Default | Live Value |
-|---|---|---|
-| `DRY_RUN` | `true` | **`false`** |
-| `SNIPE_MODE` | `raydium` | `raydium` / `slidefun` / `both` |
-| `SOL_AMOUNT` | `0.1` | Your desired buy size |
-| `JITO_TIP` | `0.003` | Increase for more priority |
+1.  **Slide.fun Stream**: 
+    *   It waits for the `Migrate` instruction. 
+    *   When it sees it, it immediately calculates the "Base Mint" (the token address) and creates an **ATA (Associated Token Account)** for your wallet. Doing this 1 second before everyone else saves precious milliseconds later.
+2.  **Raydium Stream**: 
+    *   It waits for `Initialize2` (the pool opening). 
+    *   The moment it sees the pool, it checks if the token is from our Slide.fun list.
+    *   If it matches, it fires the **Jito Bundle**.
 
 ---
 
-## Monitor logs
+## 🚀 Jito Bundles Explained
 
-```bash
-tail -f slidefun_sniper.log
-```
+Normal transactions go into a "Mempool" and wait for a validator to pick them up. This is too slow for sniping.
+
+**Jito** allows us to send a "Bundle" of transactions directly to a private validator. 
+*   **Transaction 1**: Your Buy swap.
+*   **Transaction 2**: A small tip to the Jito validator.
+
+Because they are in a bundle, either **BOTH** happen or **NEITHER** happens. You never pay a tip if your buy fails.
 
 ---
 
-## Utility tools
+## 🎛️ Understanding the Settings
 
-```bash
-# Check your TX is under 1232 bytes
-cargo run --bin measure_tx_size
+| Setting | What it does | Recommended |
+| :--- | :--- | :--- |
+| `snipe_mode` | `raydium` (standard), `slidefun` (pre-migration), or `both`. | `raydium` |
+| `jito_tip` | The bribe amount in SOL. | `0.003` to `0.01` |
+| `cu_limit` | Compute Units. How much "brain power" the network uses for your swap. | `200,000` |
+| `priority_fee` | Micro-lamports to prioritize the tx. | `100,000` |
+| `dry_run` | If `true`, the bot simulates everything but doesn't spend SOL. | `true` (for testing) |
 
-# Test swap on an existing pool (uses your .env settings)
-cargo run --bin test_swap -- <TX_SIGNATURE>
-```
+---
+
+## 🎯 Targeted Snipe (Whitelist)
+
+This is a powerful feature for "Called" tokens.
+1.  Enter the token address in the **Target Mints** section of the dashboard.
+2.  The bot will sit silently and **only** fire when that specific token migrates.
+3.  This prevents you from accidentally buying 10 other tokens that happen to launch at the same time.
+
+---
+
+## 🧹 Maintenance & Troubleshooting
+
+### "Address already in use" Error
+This happens if you close the terminal but the bot is still running in the background. 
+**Fix**: Run `lsof -ti:8080 | xargs kill -9` then restart.
+
+### "401 Unauthorized"
+Your Helius API key is wrong or has expired. Double check it in the dashboard.
+
+### "Insufficient SOL"
+Ensure your **Main Wallet** has at least **0.05 SOL** more than your `buy_amount` to cover the Jito tip and transaction fees.
+
+---
+
+## 💻 Developer Notes
+If you want to modify the code:
+*   `src/main.rs`: The entry point and orchestration.
+*   `src/listener.rs`: The high-speed WebSocket logic.
+*   `src/web.rs`: The Axum server for the dashboard.
+*   `dashboard/index.html`: The UI code (HTML/CSS/JS).

@@ -139,6 +139,11 @@ pub async fn run(
                                     if let Some(mint) =
                                         slidefun_snipe::extract_new_token(&rpc_c, &signature).await
                                     {
+                                        if !cfg_c.is_whitelisted(&mint) {
+                                            log_info!("   [SKIP] {} not in target whitelist", mint);
+                                            return;
+                                        }
+
                                         // Dedup
                                         {
                                             let mut s = sniped_c.lock().await;
@@ -242,6 +247,11 @@ pub async fn run(
                                     get_pool_info(&rpc_c, &signature).await
                                 {
                                     let token_key = pool_info.base_mint.to_string();
+
+                                    if !cfg_c.is_whitelisted(&token_key) {
+                                        log_info!("   [SKIP] {} not in target whitelist", token_key);
+                                        return;
+                                    }
 
                                     // Skip if not from Slide.fun graduation (unless TEST_MODE)
                                     if !cfg_c.test_mode {

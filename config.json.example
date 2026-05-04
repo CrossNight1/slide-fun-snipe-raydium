@@ -11,7 +11,7 @@
   "priority_fee": 100000,
   "slidefun_pump_amount": 0.05,
   "slidefun_program": "GkF6F9GNPjzkC18Xa3a88xwEc5vwyQDA1iXvFkKBqNDC",
-
+  "target_mints": [],
   "main_wallet": {
     "label": "Main Wallet",
     "private_key": "PASTE-MAIN-WALLET-KEY-HERE",

@@ -99,6 +99,15 @@ async fn save_config(Json(incoming): Json<Value>) -> impl IntoResponse {
     patch_u64!(existing.priority_fee, incoming["priority_fee"]);
     patch_f64!(existing.slidefun_pump_amount, incoming["slidefun_pump_amount"]);
 
+    // Target Mints (Whitelist)
+    if let Some(mints) = incoming["target_mints"].as_array() {
+        existing.target_mints = mints.iter()
+            .filter_map(|m| m.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+    }
+
     // Main wallet
     if let Some(mw) = incoming["main_wallet"].as_object() {
         if let Some(label) = mw["label"].as_str() { existing.main_wallet.label = label.to_string(); }
