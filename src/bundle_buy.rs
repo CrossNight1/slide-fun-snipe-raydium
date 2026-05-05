@@ -53,42 +53,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 // ============================================
-// Wallet loading
-// ============================================
-
-/// Load extra sub-wallets from a JSON file.
-/// Returns a list of Keypairs to use for bundle buying.
-pub fn load_wallets(path: &str) -> Vec<Keypair> {
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) => {
-            log_info!("[BUNDLE] Could not read wallets file '{}': {}", path, e);
-            return vec![];
-        }
-    };
-
-    let entries: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(e) => {
-            log_info!("[BUNDLE] Failed to parse wallets.json: {}", e);
-            return vec![];
-        }
-    };
-
-    let mut keypairs = Vec::new();
-    if let Some(arr) = entries.as_array() {
-        for (i, entry) in arr.iter().enumerate() {
-            if let Some(pk_str) = entry["private_key"].as_str() {
-                let kp = Keypair::from_base58_string(pk_str);
-                log_info!("[BUNDLE] Loaded wallet[{}]: {}", i, kp.pubkey());
-                keypairs.push(kp);
-            }
-        }
-    }
-    keypairs
-}
-
-// ============================================
 // Transaction builders
 // ============================================
 
@@ -150,8 +114,8 @@ pub fn build_raydium_buy_tx_for_wallet(
     let swap_ix = build_swap_instruction(
         pool_info,
         user,
-        user_token_ata,
         user_wsol_ata,
+        user_token_ata,
         sol_lamports,
         min_token_out,
         base_token_program,
@@ -444,9 +408,8 @@ fn pack_into_bundles(
 ///   5. Retry up to MAX_RETRIES times for wallets that didn't buy.
 pub async fn raydium_bundle_buy(
     config: &Config,
-    wallets: &[Keypair],
+    wallets: &[(Keypair, f64)],
     pool_info: Arc<PoolInfo>,
-    sol_per_wallet: f64,
     blockhash: Hash,
 ) {
     if wallets.is_empty() {
@@ -457,20 +420,17 @@ pub async fn raydium_bundle_buy(
     const MAX_RETRIES: usize = 2;       // up to 3 total attempts (1 initial + 2 retries)
     const CONFIRM_WAIT_SECS: u64 = 6;   // seconds to wait before checking if bundles landed
 
-    let sol_lamports = (sol_per_wallet * LAMPORTS_PER_SOL as f64) as u64;
     let jito_tip_lamports = (config.jito_tip * LAMPORTS_PER_SOL as f64) as u64;
-    // Threshold: if balance dropped by ≥ half the swap amount the wallet bought
-    let bought_threshold = sol_lamports / 2;
 
-    log_info!("[BUNDLE] 🚀 Raydium bundle buy: {} wallets × {} SOL each (tip={} SOL each bundle)",
-        wallets.len(), sol_per_wallet, config.jito_tip);
+    log_info!("[BUNDLE] 🚀 Raydium bundle buy: {} wallets (tip={} SOL each bundle)",
+        wallets.len(), config.jito_tip);
 
     // RPC client for balance checks / fresh blockhash on retry
     let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
     let rpc = RpcClient::new(rpc_url);
 
     // Capture pre-buy balances for all wallets (used to detect confirmed buys)
-    let wallet_pubkeys: Vec<Pubkey> = wallets.iter().map(|kp| kp.pubkey()).collect();
+    let wallet_pubkeys: Vec<Pubkey> = wallets.iter().map(|(kp, _)| kp.pubkey()).collect();
     let mut pre_balances: Vec<u64> = Vec::with_capacity(wallets.len());
     {
         let futs: Vec<_> = wallet_pubkeys.iter().map(|pk| rpc.get_balance(pk)).collect();
@@ -508,15 +468,16 @@ pub async fn raydium_bundle_buy(
         // Build buy TXs for pending wallets only
         let mut buy_txs: Vec<VersionedTransaction> = Vec::new();
         for &wi in &pending {
-            let keypair = &wallets[wi];
+            let (keypair, sol_amount) = &wallets[wi];
+            let sol_lamports = (*sol_amount * LAMPORTS_PER_SOL as f64) as u64;
             match build_raydium_buy_tx_for_wallet(
                 keypair, &pool_info, sol_lamports, 0,
                 config.cu_limit, config.priority_fee, current_bh,
             ) {
                 Some(tx) => {
                     let bytes = bincode::serialize(&tx).unwrap_or_default();
-                    log_info!("[BUNDLE]   Wallet[{}] {} → {} bytes",
-                        wi, keypair.pubkey(), bytes.len());
+                    log_info!("[BUNDLE]   Wallet[{}] {} → {} bytes ({} SOL)",
+                        wi, keypair.pubkey(), bytes.len(), sol_amount);
                     buy_txs.push(tx);
                 }
                 None => log_info!("[BUNDLE]   Wallet[{}] failed to build TX", wi),
@@ -562,6 +523,10 @@ pub async fn raydium_bundle_buy(
             let wi = pending[idx];
             let cur_bal = res.unwrap_or(pre_balances[wi]);
             let spent = pre_balances[wi].saturating_sub(cur_bal);
+            
+            let sol_lamports = (wallets[wi].1 * LAMPORTS_PER_SOL as f64) as u64;
+            let bought_threshold = sol_lamports / 2;
+            
             if spent >= bought_threshold {
                 wallet_bought[wi] = true;
                 log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (spent {} lamports)", wi, spent);
@@ -585,14 +550,137 @@ pub async fn raydium_bundle_buy(
     log_info!("[BUNDLE] ✅ Done");
 }
 
+// ============================================
+// Manual Bundle Selling
+// ============================================
+
+/// Build a single **Raydium AMM V4 sell** transaction for a sub-wallet.
+/// Sells `percent` (0.0 - 100.0) of the current token balance.
+pub async fn build_raydium_sell_tx_for_wallet(
+    rpc: &RpcClient,
+    keypair: &Keypair,
+    pool_info: &PoolInfo,
+    percent: f64,
+    blockhash: Hash,
+) -> Option<VersionedTransaction> {
+    use crate::transaction::build_swap_instruction;
+
+    let user = keypair.pubkey();
+    let token_mint = pool_info.base_mint;
+    let base_token_program = pool_info.base_token_program;
+    let wsol_mint = Pubkey::from_str(constants::WSOL_MINT).unwrap();
+    let token_program = Pubkey::from_str(constants::TOKEN_PROGRAM).unwrap();
+
+    let user_token_ata = get_associated_token_address_with_program_id(
+        &user,
+        &token_mint,
+        &base_token_program,
+    );
+    let user_wsol_ata = get_associated_token_address(&user, &wsol_mint);
+
+    // Fetch token balance
+    let balance_resp = rpc.get_token_account_balance(&user_token_ata).await.ok()?;
+    let amount_u64 = balance_resp.amount.parse::<u64>().ok()?;
+    if amount_u64 == 0 {
+        return None;
+    }
+
+    let sell_amount = if percent >= 100.0 {
+        amount_u64
+    } else {
+        (amount_u64 as f64 * (percent / 100.0)) as u64
+    };
+
+    if sell_amount == 0 {
+        return None;
+    }
+
+    let swap_ix = build_swap_instruction(
+        pool_info,
+        user,
+        user_token_ata,  // src = Token
+        user_wsol_ata,   // dst = WSOL
+        sell_amount,
+        0,               // min_sol_out = 0 (manual sell)
+        base_token_program,
+    );
+
+    let ixs = vec![
+        ComputeBudgetInstruction::set_compute_unit_limit(200_000),
+        ComputeBudgetInstruction::set_compute_unit_price(100_000),
+        create_associated_token_account_idempotent(&user, &user, &wsol_mint, &token_program),
+        swap_ix,
+        // Close WSOL account to get SOL back
+        Instruction {
+            program_id: token_program,
+            accounts: vec![
+                AccountMeta::new(user_wsol_ata, false),
+                AccountMeta::new(user, false),
+                AccountMeta::new_readonly(user, true),
+            ],
+            data: vec![9], // CloseAccount
+        },
+    ];
+
+    match Message::try_compile(&user, &ixs, &[], blockhash) {
+        Ok(msg) => {
+            match VersionedTransaction::try_new(VersionedMessage::V0(msg), &[keypair]) {
+                Ok(tx) => Some(tx),
+                Err(e) => { log_info!("[BUNDLE] Wallet {} sell sign error: {}", user, e); None }
+            }
+        }
+        Err(e) => { log_info!("[BUNDLE] Wallet {} sell compile error: {}", user, e); None }
+    }
+}
+
+/// Execute a multi-wallet bundle sell on Raydium AMM V4.
+pub async fn raydium_bundle_sell(
+    config: &Config,
+    wallets: &[(Keypair, f64)],
+    pool_info: Arc<PoolInfo>,
+    percent: f64,
+    blockhash: Hash,
+) {
+    if wallets.is_empty() {
+        log_info!("[BUNDLE] No wallets for bundle sell");
+        return;
+    }
+
+    log_info!("[BUNDLE] 🚀 Multi-wallet SELL: {} wallets, {:.1}% of tokens", wallets.len(), percent);
+
+    let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
+    let rpc = RpcClient::new(rpc_url);
+
+    let mut sell_txs = Vec::new();
+    for (i, (wallet, _sol)) in wallets.iter().enumerate() {
+        if let Some(tx) = build_raydium_sell_tx_for_wallet(&rpc, wallet, &pool_info, percent, blockhash).await {
+            log_info!("[BUNDLE]   Wallet[{}] {} → built sell TX", i, wallet.pubkey());
+            sell_txs.push(tx);
+        } else {
+            log_info!("[BUNDLE]   Wallet[{}] {} → skipped (no balance or error)", i, wallet.pubkey());
+        }
+    }
+
+    if sell_txs.is_empty() {
+        log_info!("[BUNDLE] No valid sell transactions built — aborting");
+        return;
+    }
+
+    let jito_tip_lamports = (config.jito_tip * LAMPORTS_PER_SOL as f64) as u64;
+    let bundles = pack_into_bundles(&sell_txs, &config.keypair, jito_tip_lamports, blockhash);
+
+    log_info!("[BUNDLE] Firing {} sell bundle(s)...", bundles.len());
+    fire_bundles(bundles).await;
+    log_info!("[BUNDLE] Manual bundle sell sent");
+}
+
 /// Fire a multi-wallet bundle buy on Slide.fun Bonding Curve.
 /// Same retry strategy as `raydium_bundle_buy`.
 pub async fn slidefun_bundle_buy(
     config: &Config,
-    wallets: &[Keypair],
+    wallets: &[(Keypair, f64)],
     token_mint: &str,
     fee_to: &Pubkey,
-    sol_per_wallet: f64,
     blockhash: Hash,
 ) {
     if wallets.is_empty() {
@@ -608,18 +696,16 @@ pub async fn slidefun_bundle_buy(
     const MAX_RETRIES: usize = 2;
     const CONFIRM_WAIT_SECS: u64 = 6;
 
-    let sol_lamports = (sol_per_wallet * LAMPORTS_PER_SOL as f64) as u64;
     let jito_tip_lamports = (config.jito_tip * LAMPORTS_PER_SOL as f64) as u64;
-    let bought_threshold = sol_lamports / 2;
 
-    log_info!("[BUNDLE] 🚀 Slide.fun bundle buy: {} wallets × {} SOL each (tip={} SOL each bundle)",
-        wallets.len(), sol_per_wallet, config.jito_tip);
+    log_info!("[BUNDLE] 🚀 Slide.fun bundle buy: {} wallets (tip={} SOL each bundle)",
+        wallets.len(), config.jito_tip);
 
     let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
     let rpc = RpcClient::new(rpc_url);
 
     // Capture pre-buy balances
-    let sf_wallet_pubkeys: Vec<Pubkey> = wallets.iter().map(|kp| kp.pubkey()).collect();
+    let sf_wallet_pubkeys: Vec<Pubkey> = wallets.iter().map(|(kp, _)| kp.pubkey()).collect();
     let mut pre_balances: Vec<u64> = Vec::with_capacity(wallets.len());
     {
         let futs: Vec<_> = sf_wallet_pubkeys.iter().map(|pk| rpc.get_balance(pk)).collect();
@@ -651,14 +737,16 @@ pub async fn slidefun_bundle_buy(
 
         let mut buy_txs: Vec<VersionedTransaction> = Vec::new();
         for &wi in &pending {
+            let (keypair, sol_amount) = &wallets[wi];
+            let sol_lamports = (*sol_amount * LAMPORTS_PER_SOL as f64) as u64;
             match build_slidefun_buy_tx_for_wallet(
-                &wallets[wi], &token_mint_pk, fee_to, sol_lamports,
+                keypair, &token_mint_pk, fee_to, sol_lamports,
                 config.cu_limit, config.priority_fee, current_bh,
             ) {
                 Some(tx) => {
                     let bytes = bincode::serialize(&tx).unwrap_or_default();
-                    log_info!("[BUNDLE]   Wallet[{}] {} → {} bytes",
-                        wi, wallets[wi].pubkey(), bytes.len());
+                    log_info!("[BUNDLE]   Wallet[{}] {} → {} bytes ({} SOL)",
+                        wi, keypair.pubkey(), bytes.len(), sol_amount);
                     buy_txs.push(tx);
                 }
                 None => log_info!("[BUNDLE]   Wallet[{}] failed to build TX", wi),
@@ -698,11 +786,15 @@ pub async fn slidefun_bundle_buy(
             let wi = pending[idx];
             let cur_bal = res.unwrap_or(pre_balances[wi]);
             let spent = pre_balances[wi].saturating_sub(cur_bal);
+            
+            let sol_lamports = (wallets[wi].1 * LAMPORTS_PER_SOL as f64) as u64;
+            let bought_threshold = sol_lamports / 2;
+            
             if spent >= bought_threshold {
                 wallet_bought[wi] = true;
                 log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (spent {} lamports)", wi, spent);
             } else {
-                log_info!("[BUNDLE] ⏳ Wallet[{}] not confirmed yet (spent {} lamports)", wi, spent);
+                log_info!("[BUNDLE] ⏳ Wallet[{}] not confirmed yet (spent {} lamports, need ≥{})", wi, spent, bought_threshold);
             }
         }
 

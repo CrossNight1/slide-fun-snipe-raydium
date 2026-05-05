@@ -52,6 +52,15 @@ This is a powerful feature for "Called" tokens.
 
 ---
 
+## ⚡ Manual Bundle Actions
+
+Sometimes you want to snipe or sell an existing token across all your sub-wallets simultaneously, independent of the automated listeners.
+
+1. **Manual Bundle Buy**: Paste the mint address and your desired SOL amount. The bot will automatically scrape the RPC for the token's AMM V4 pool address, construct buy transactions for *all* enabled sub-wallets, and fire them in a unified Jito bundle.
+2. **Manual Bundle Sell**: Similar to buy, you provide a percentage (e.g. 50% or 100%). The bot will scan all sub-wallets for their token balances, create sell transactions, bundle them, and automatically unwrap the WSOL back into native SOL.
+
+---
+
 ## 🧹 Maintenance & Troubleshooting
 
 ### "Address already in use" Error

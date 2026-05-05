@@ -172,8 +172,8 @@ pub async fn simulate_bundle_jito(encoded_txs: &[String]) -> Result<Value, Box<d
 pub fn build_swap_instruction(
     pool_info: &PoolInfo,
     user: Pubkey,
-    user_token_account: Pubkey,
-    user_wsol_account: Pubkey,
+    src_ata: Pubkey,
+    dst_ata: Pubkey,
     amount_in: u64,
     min_amount_out: u64,
     token_program: Pubkey,
@@ -197,8 +197,8 @@ pub fn build_swap_instruction(
         AccountMeta::new(pool_info.market_coin_vault, false),
         AccountMeta::new(pool_info.market_pc_vault, false),
         AccountMeta::new_readonly(pool_info.market_vault_signer, false),
-        AccountMeta::new(user_wsol_account, false),
-        AccountMeta::new(user_token_account, false),
+        AccountMeta::new(src_ata, false),
+        AccountMeta::new(dst_ata, false),
         AccountMeta::new_readonly(user, true),
     ];
 

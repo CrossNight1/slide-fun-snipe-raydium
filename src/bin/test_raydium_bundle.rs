@@ -98,14 +98,14 @@ async fn main() {
     };
 
     // Step 2: Load sub-wallets
-    println!("\n  [2/4] Loading sub-wallets from '{}'...", config.bundle_wallets_file);
-    let wallets: Vec<Keypair> = bundle_buy::load_wallets(&config.bundle_wallets_file);
+    println!("\n  [2/4] Loading sub-wallets from config...");
+    let wallets: Vec<(Keypair, f64)> = config.enabled_bundle_keypairs();
     if wallets.is_empty() {
         println!("        ⚠️  No sub-wallets loaded — only main wallet will buy");
     } else {
         println!("        {} sub-wallets loaded", wallets.len());
-        for (i, kp) in wallets.iter().enumerate() {
-            println!("        [wallet {:>2}] {}", i, kp.pubkey());
+        for (i, (kp, sol)) in wallets.iter().enumerate() {
+            println!("        [wallet {:>2}] {} ({} SOL)", i, kp.pubkey(), sol);
         }
     }
 
@@ -127,9 +127,9 @@ async fn main() {
             }
         };
 
-        let sol_lamports = (config.bundle_sol_per_wallet * LAMPORTS_PER_SOL as f64) as u64;
+        let sol_lamports = (wallets[0].1 * LAMPORTS_PER_SOL as f64) as u64;
 
-        let w0 = wallets[0].pubkey();
+        let w0 = wallets[0].0.pubkey();
         let wsol_mint = Pubkey::from_str(constants::WSOL_MINT).unwrap();
         let wsol_ata = get_associated_token_address(&w0, &wsol_mint);
         let token_ata = get_associated_token_address_with_program_id(
@@ -176,7 +176,7 @@ async fn main() {
         if config.dry_run {
             println!("\n  [SIM] Simulating wallet[0] buy TX via RPC...");
             match bundle_buy::build_raydium_buy_tx_for_wallet(
-                &wallets[0],
+                &wallets[0].0,
                 &pool_info,
                 sol_lamports,
                 0,
@@ -231,7 +231,6 @@ async fn main() {
                 &config,
                 &wallets,
                 pool_arc,
-                config.bundle_sol_per_wallet,
                 bh,
             ).await;
         }

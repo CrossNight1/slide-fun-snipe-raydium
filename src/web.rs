@@ -6,7 +6,8 @@
 //   POST /api/config → saves new AppConfig to config.json
 //   GET  /api/logs   → Server-Sent Events stream of live log lines
 
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use solana_sdk::signature::SeedDerivable;
 use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
@@ -27,16 +28,22 @@ pub type LogTx = broadcast::Sender<String>;
 #[derive(Clone)]
 pub struct AppState {
     pub log_tx: LogTx,
+    pub bot_active: Arc<AtomicBool>,
 }
 
 /// Start the dashboard on port 8080. Call from main with tokio::spawn.
-pub async fn start(log_tx: LogTx) {
-    let state = AppState { log_tx };
+pub async fn start(log_tx: LogTx, bot_active: Arc<AtomicBool>) {
+    let state = AppState { log_tx, bot_active };
     let app = Router::new()
         .route("/", get(serve_dashboard))
         .route("/api/config", get(get_config))
         .route("/api/config", post(save_config))
         .route("/api/logs", get(stream_logs))
+        .route("/api/manual-buy", post(manual_bundle_buy))
+        .route("/api/manual-sell", post(manual_bundle_sell))
+        .route("/api/explanation", get(get_explanation))
+        .route("/api/status", get(get_status).post(set_status))
+        .route("/api/check-wallet", post(check_wallet))
         .with_state(state);
 
     let addr = "0.0.0.0:8080";
@@ -48,6 +55,70 @@ pub async fn start(log_tx: LogTx) {
 /// GET / — inline HTML dashboard
 async fn serve_dashboard() -> impl IntoResponse {
     Html(include_str!("../dashboard/index.html"))
+}
+
+/// GET /api/status — returns {"active": true/false}
+async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
+    let active = state.bot_active.load(Ordering::Relaxed);
+    Json(json!({ "active": active }))
+}
+
+/// POST /api/status — set bot active state
+#[derive(serde::Deserialize)]
+struct StatusReq {
+    active: bool,
+}
+async fn set_status(State(state): State<AppState>, Json(req): Json<StatusReq>) -> impl IntoResponse {
+    state.bot_active.store(req.active, Ordering::Relaxed);
+    let status_str = if req.active { "STARTED" } else { "STOPPED" };
+    let _ = state.log_tx.send(format!("[SYSTEM] Bot engine {}", status_str));
+    Json(json!({ "ok": true, "active": req.active }))
+}
+
+/// POST /api/check-wallet — validate a private key and return pubkey
+#[derive(serde::Deserialize)]
+struct CheckWalletReq {
+    private_key: String,
+}
+async fn check_wallet(Json(req): Json<CheckWalletReq>) -> impl IntoResponse {
+    use solana_sdk::signature::Keypair;
+    use solana_sdk::signer::Signer;
+    
+    let bytes = match bs58::decode(&req.private_key).into_vec() {
+        Ok(b) => b,
+        Err(_) => return Json(json!({ "valid": false, "error": "Invalid Base58 format" })),
+    };
+
+    let keypair = if bytes.len() == 64 {
+        match Keypair::from_bytes(&bytes) {
+            Ok(k) => k,
+            Err(_) => return Json(json!({ "valid": false, "error": "Invalid 64-byte private key" })),
+        }
+    } else if bytes.len() == 32 {
+        let array: [u8; 32] = match bytes.try_into() {
+            Ok(a) => a,
+            Err(_) => return Json(json!({ "valid": false, "error": "Invalid seed length" })),
+        };
+        match Keypair::from_seed(&array) {
+            Ok(k) => k,
+            Err(_) => return Json(json!({ "valid": false, "error": "Failed to derive key from seed" })),
+        }
+    } else {
+        return Json(json!({ "valid": false, "error": "Private key must be 64 bytes (secret) or 32 bytes (seed)" }));
+    };
+
+    Json(json!({
+        "valid": true,
+        "pubkey": keypair.pubkey().to_string()
+    }))
+}
+
+/// GET /api/explanation — return content of explanation.md
+async fn get_explanation() -> impl IntoResponse {
+    match std::fs::read_to_string("explanation.md") {
+        Ok(content) => content,
+        Err(_) => "# Explanation file not found.\nPlease ensure `explanation.md` exists in the root directory.".to_string(),
+    }
 }
 
 /// GET /api/config — return config with private keys masked
@@ -97,6 +168,7 @@ async fn save_config(Json(incoming): Json<Value>) -> impl IntoResponse {
     patch_f64!(existing.jito_tip, incoming["jito_tip"]);
     patch_u32!(existing.cu_limit, incoming["cu_limit"]);
     patch_u64!(existing.priority_fee, incoming["priority_fee"]);
+    patch_bool!(existing.auto_snipe_all, incoming["auto_snipe_all"]);
     patch_f64!(existing.slidefun_pump_amount, incoming["slidefun_pump_amount"]);
 
     // Target Mints (Whitelist)
@@ -162,4 +234,88 @@ fn mask_key(key: &str) -> String {
         return key.to_string();
     }
     format!("{}****{}", &key[..4], &key[key.len()-4..])
+}
+
+// ─────────────────────────────────────────────
+// Manual Action Handlers
+// ─────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct ManualBuyReq {
+    mint: String,
+    sol_per_wallet: f64,
+}
+
+#[derive(serde::Deserialize)]
+struct ManualSellReq {
+    mint: String,
+    percent: f64,
+}
+
+async fn manual_bundle_buy(Json(req): Json<ManualBuyReq>) -> impl IntoResponse {
+    use crate::config::Config;
+    use crate::pool::find_pool_by_mint;
+    use crate::bundle_buy::raydium_bundle_buy;
+    use crate::blockhash::get_blockhash;
+    use solana_sdk::pubkey::Pubkey;
+    use solana_client::nonblocking::rpc_client::RpcClient;
+    use std::str::FromStr;
+
+    let config = Config::from_env();
+    let mint = match Pubkey::from_str(&req.mint) {
+        Ok(pk) => pk,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid mint address"}))).into_response(),
+    };
+
+    let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
+    let rpc = RpcClient::new(rpc_url);
+
+    let bundle_wallets = config.enabled_bundle_keypairs();
+    if bundle_wallets.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "No enabled bundle wallets"}))).into_response();
+    }
+    let override_wallets: Vec<_> = bundle_wallets.into_iter().map(|(k, _)| (k, req.sol_per_wallet)).collect();
+
+    // Run in background to avoid blocking web server
+    tokio::spawn(async move {
+        if let Some(pool) = find_pool_by_mint(&rpc, &mint).await {
+            let bh = get_blockhash();
+            raydium_bundle_buy(&config, &override_wallets, Arc::new(pool), bh).await;
+        }
+    });
+
+    (StatusCode::OK, Json(json!({"ok": true, "message": "Manual bundle buy started"}))).into_response()
+}
+
+async fn manual_bundle_sell(Json(req): Json<ManualSellReq>) -> impl IntoResponse {
+    use crate::config::Config;
+    use crate::pool::find_pool_by_mint;
+    use crate::bundle_buy::raydium_bundle_sell;
+    use crate::blockhash::get_blockhash;
+    use solana_sdk::pubkey::Pubkey;
+    use solana_client::nonblocking::rpc_client::RpcClient;
+    use std::str::FromStr;
+
+    let config = Config::from_env();
+    let mint = match Pubkey::from_str(&req.mint) {
+        Ok(pk) => pk,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid mint address"}))).into_response(),
+    };
+
+    let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
+    let rpc = RpcClient::new(rpc_url);
+
+    let bundle_wallets = config.enabled_bundle_keypairs();
+    if bundle_wallets.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "No enabled bundle wallets"}))).into_response();
+    }
+
+    tokio::spawn(async move {
+        if let Some(pool) = find_pool_by_mint(&rpc, &mint).await {
+            let bh = get_blockhash();
+            raydium_bundle_sell(&config, &bundle_wallets, Arc::new(pool), req.percent, bh).await;
+        }
+    });
+
+    (StatusCode::OK, Json(json!({"ok": true, "message": "Manual bundle sell started"}))).into_response()
 }

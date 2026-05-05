@@ -32,7 +32,7 @@ async fn main() {
     let rpc = Arc::new(RpcClient::new(rpc_url));
 
     let pool_info = get_pool_info(&rpc, &args[1]).await.expect("Failed to get pool info");
-    let wallets: Vec<Keypair> = bundle_buy::load_wallets(&config.bundle_wallets_file);
+    let wallets: Vec<Keypair> = config.enabled_bundle_keypairs().into_iter().map(|(k, _)| k).collect();
     let wallet = &wallets[1]; // Use wallet[1] (fresh, hasn't been used yet)
 
     println!("Wallet: {}", wallet.pubkey());

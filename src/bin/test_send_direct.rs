@@ -27,7 +27,7 @@ async fn main() {
         None => { eprintln!("Could not parse pool info"); std::process::exit(1); }
     };
 
-    let wallets: Vec<Keypair> = bundle_buy::load_wallets(&config.bundle_wallets_file);
+    let wallets: Vec<Keypair> = config.enabled_bundle_keypairs().into_iter().map(|(k, _)| k).collect();
     if wallets.is_empty() { eprintln!("No wallets"); std::process::exit(1); }
 
     let bh = rpc.get_latest_blockhash().await.unwrap();

@@ -52,14 +52,23 @@ The dashboard is where you control everything. No more editing messy code!
 
 ### 🎯 3. Target Mints (Whitelist)
 *   **Empty List**: The bot snipes **EVERY** token that graduates from Slide.fun.
-*   **Adding Addresses**: If you add a contract address here, the bot will **IGNORE** everything else and **ONLY** snipe that specific token. Use this if you are following a "caller" or a specific launch.
+*   **Adding Addresses**: If you add a contract address (Mint Address) here, the bot will **IGNORE** everything else and **ONLY** snipe that specific token. Use this if you are following a "caller" or a specific launch.
+
+### ⚡ 4. Manual Bundle Actions
+*   **What is it?**: A tool to instantly buy or sell a specific token across *all* your wallets at the exact same time using Jito bundles.
+*   **How to use**: Simply paste a **Token Mint Address**, choose how much you want to Buy (in SOL) or Sell (in %), and click the button. The bot will automatically find the Raydium pool and fire the transactions instantly.
 
 ---
 
-## 🚦 Running the Bot
+## 🚦 Testing with No Money (Safe Mode)
 
-1.  **Testing**: Keep `DRY_RUN: true`. Run `./start.sh`. Watch the "Live Logs" in the dashboard. If you see "Sniping: [Address]", it means it worked!
-2.  **Live**: Set `DRY_RUN: false`. Click **Save**. Restart the bot. **Warning: This will spend real SOL.**
+Before risking real money, you should test the bot's speed and mechanics using **Dry Run** mode.
+
+1.  **Enable Dry Run**: In the dashboard, make sure the **Dry Run** switch is set to **ON** (`DRY_RUN: true`), and click **Save Config**.
+2.  **Run the Bot**: Run `./start.sh` in your terminal.
+3.  **Watch the Logs**: Check the "Live Logs" in the dashboard. The bot will detect pools, build the transactions, and simulate them over the Solana network to see if they *would* have succeeded. 
+4.  **No Money Spent**: The bot will skip sending the final bundle to Jito. Your SOL is 100% safe.
+5.  **Go Live**: When you are confident, switch **Dry Run** to **OFF** (`DRY_RUN: false`), Save, and restart the bot. **Warning: This will spend real SOL.**
 
 ---
 

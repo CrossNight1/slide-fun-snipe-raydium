@@ -1,6 +1,8 @@
 use crate::{log_info, types::PoolInfo};
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_client::rpc_config::RpcTransactionConfig;
+use solana_client::rpc_client::GetConfirmedSignaturesForAddress2Config;
+use solana_client::rpc_config::{RpcTransactionConfig, RpcProgramAccountsConfig, RpcAccountInfoConfig};
+use solana_account_decoder::UiAccountEncoding;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Signature};
 use std::str::FromStr;
 use tokio::time::{sleep, Duration};
@@ -362,5 +364,81 @@ pub async fn get_pool_info(rpc_client: &RpcClient, signature: &str) -> Option<Po
             }
         }
     }
+    None
+}
+
+/// Find a Raydium AMM V4 pool for a given mint.
+/// It uses getProgramAccounts with Memcmp filters to find the AMM ID.
+pub async fn find_pool_by_mint(rpc_client: &RpcClient, mint: &Pubkey) -> Option<PoolInfo> {
+    use solana_client::rpc_filter::{RpcFilterType, Memcmp};
+
+    let amm_program = Pubkey::from_str(crate::constants::RAYDIUM_AMM_PROGRAM).unwrap();
+    let wsol = Pubkey::from_str(crate::constants::WSOL_MINT).unwrap();
+
+    log_info!("[POOL] Searching for pool for mint {}...", mint);
+
+    // Filter: Size 752, and mint at offset 400 (base) and WSOL at 432 (quote)
+    let filters = vec![
+        RpcFilterType::DataSize(752),
+        RpcFilterType::Memcmp(Memcmp::new(400, solana_client::rpc_filter::MemcmpEncodedBytes::Bytes(mint.to_bytes().to_vec()))),
+        RpcFilterType::Memcmp(Memcmp::new(432, solana_client::rpc_filter::MemcmpEncodedBytes::Bytes(wsol.to_bytes().to_vec()))),
+    ];
+
+    let mut results = rpc_client.get_program_accounts_with_config(
+        &amm_program,
+        RpcProgramAccountsConfig {
+            filters: Some(filters),
+            account_config: RpcAccountInfoConfig {
+                encoding: Some(UiAccountEncoding::Base64),
+                commitment: Some(CommitmentConfig::confirmed()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    ).await.ok()?;
+
+    if results.is_empty() {
+        // Try other direction: mint at offset 432 (quote) and WSOL at 400 (base)
+        let filters = vec![
+            RpcFilterType::DataSize(752),
+            RpcFilterType::Memcmp(Memcmp::new(432, solana_client::rpc_filter::MemcmpEncodedBytes::Bytes(mint.to_bytes().to_vec()))),
+            RpcFilterType::Memcmp(Memcmp::new(400, solana_client::rpc_filter::MemcmpEncodedBytes::Bytes(wsol.to_bytes().to_vec()))),
+        ];
+        results = rpc_client.get_program_accounts_with_config(
+            &amm_program,
+            RpcProgramAccountsConfig {
+                filters: Some(filters),
+                account_config: RpcAccountInfoConfig {
+                    encoding: Some(UiAccountEncoding::Base64),
+                    commitment: Some(CommitmentConfig::confirmed()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        ).await.ok()?;
+    }
+
+    if let Some((amm_id, _account)) = results.first() {
+        log_info!("[POOL] Found AMM ID: {}. Fetching pool history to reconstruct PoolInfo...", amm_id);
+        // To get the full PoolInfo (market IDs, etc), we find the creation signature or any recent swap
+        match rpc_client.get_signatures_for_address_with_config(
+            amm_id,
+            GetConfirmedSignaturesForAddress2Config {
+                limit: Some(5),
+                ..Default::default()
+            }
+        ).await {
+            Ok(sigs) => {
+                for sig_info in sigs {
+                    if let Some(pool) = get_pool_info(rpc_client, &sig_info.signature).await {
+                        return Some(pool);
+                    }
+                }
+            }
+            Err(e) => log_info!("[POOL] Failed to get signatures for {}: {}", amm_id, e),
+        }
+    }
+
+    log_info!("[POOL] No Raydium AMM V4 pool found for mint {}", mint);
     None
 }

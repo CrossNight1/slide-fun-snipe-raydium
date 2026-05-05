@@ -11,7 +11,7 @@
 //
 // The listener loop reconnects automatically on WebSocket disconnection.
 
-use std::{collections::HashSet, str::FromStr, sync::Arc};
+use std::{collections::HashSet, str::FromStr, sync::{Arc, atomic::{AtomicBool, Ordering}}};
 
 use futures_util::StreamExt;
 use solana_client::{
@@ -60,9 +60,10 @@ impl ListenerState {
 pub async fn run(
     config: Arc<Config>,
     rpc_client: Arc<RpcClient>,
-    bundle_wallets: Arc<Vec<Keypair>>,
+    bundle_wallets: Arc<Vec<(Keypair, f64)>>,
     ws_url: &str,
     state: &ListenerState,
+    bot_active: Arc<AtomicBool>,
 ) {
     let enable_slidefun_create = matches!(config.snipe_mode.as_str(), "slidefun" | "both");
     let enable_raydium_migrate = matches!(config.snipe_mode.as_str(), "raydium" | "both");
@@ -121,6 +122,10 @@ pub async fn run(
                     };
 
                     match event {
+                        Some(_) if !bot_active.load(Ordering::Relaxed) => {
+                            // Bot is stopped, ignore all events
+                            continue;
+                        }
                         // ── LISTENER A: Slide.fun ─────────────────────────────
                         Some(("slidefun", log)) => {
                             let logs = log.value.logs.clone();
@@ -171,7 +176,6 @@ pub async fn run(
                                                     &wallets_c,
                                                     &mint,
                                                     &fee_to,
-                                                    cfg_c.bundle_sol_per_wallet,
                                                     bh,
                                                 )
                                                 .await;
@@ -309,7 +313,6 @@ pub async fn run(
                                             &cfg_c,
                                             &wallets_c,
                                             pool_arc,
-                                            cfg_c.bundle_sol_per_wallet,
                                             bh,
                                         )
                                         .await;

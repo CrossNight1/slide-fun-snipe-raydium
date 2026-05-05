@@ -39,6 +39,8 @@ pub struct AppConfig {
     pub slidefun_pump_amount: f64,
     pub slidefun_program: Option<String>,
     #[serde(default)]
+    pub auto_snipe_all: bool,
+    #[serde(default)]
     pub target_mints: Vec<String>,
     pub main_wallet: WalletEntry,
     pub bundle_wallets: Vec<WalletEntry>,
@@ -56,6 +58,7 @@ impl Default for AppConfig {
             priority_fee: 100_000,
             slidefun_pump_amount: 0.05,
             slidefun_program: None,
+            auto_snipe_all: false,
             target_mints: vec![],
             main_wallet: WalletEntry {
                 label: "Main Wallet".to_string(),
@@ -104,6 +107,7 @@ impl AppConfig {
             priority_fee: env::var("PRIORITY_FEE").ok().and_then(|v| v.parse().ok()).unwrap_or(100_000),
             slidefun_pump_amount: env::var("SLIDEFUN_PUMP_AMOUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.05),
             slidefun_program: env::var("SLIDEFUN_PROGRAM").ok().filter(|v| !v.is_empty()),
+            auto_snipe_all: parse_bool(&env::var("AUTO_SNIPE_ALL").unwrap_or_else(|_| "false".to_string())),
             target_mints: vec![],
             main_wallet: WalletEntry {
                 label: "Main Wallet".to_string(),
@@ -186,23 +190,24 @@ impl Config {
         Self::from_app(AppConfig::load())
     }
 
-    /// Return only the *enabled* bundle wallets as Keypair objects.
-    pub fn enabled_bundle_keypairs(&self) -> Vec<Keypair> {
+    /// Return only the *enabled* bundle wallets as (Keypair, sol_amount).
+    pub fn enabled_bundle_keypairs(&self) -> Vec<(Keypair, f64)> {
         self.app
             .bundle_wallets
             .iter()
             .filter(|w| w.enabled && !w.private_key.is_empty())
             .filter_map(|w| {
                 let bytes = bs58::decode(&w.private_key).into_vec().ok()?;
-                Keypair::from_bytes(&bytes).ok()
+                let keypair = Keypair::try_from(bytes.as_ref()).ok()?;
+                Some((keypair, w.sol_amount))
             })
             .collect()
     }
 
-    /// Check if a mint is in the target whitelist.
-    /// If target_mints is empty, returns TRUE (snipes everything).
+
+    /// Check if a mint is in the target whitelist or if auto-snipe is enabled.
     pub fn is_whitelisted(&self, mint: &str) -> bool {
-        if self.app.target_mints.is_empty() {
+        if self.app.auto_snipe_all {
             return true;
         }
         self.app.target_mints.iter().any(|m| m == mint)

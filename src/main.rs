@@ -13,7 +13,7 @@ mod types;
 mod wallet;
 mod web;
 
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{hash::Hash, signer::Signer};
 use tokio::time::{sleep, Duration};
@@ -38,10 +38,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_info!("   [BUNDLE] {} enabled sub-wallet(s) loaded", bundle_wallets.len());
     }
 
+    let bot_active = Arc::new(AtomicBool::new(false)); // Start paused
+
     // ── 4. Spawn web dashboard on port 8080 ──────────────────────────────────
     {
         let tx = log_tx.clone();
-        tokio::spawn(async move { web::start(tx).await });
+        let active = bot_active.clone();
+        tokio::spawn(async move { web::start(tx, active).await });
     }
 
     // ── 5. Build RPC / WebSocket URLs ────────────────────────────────────────
@@ -70,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── 8. Run the dual-listener loop ────────────────────────────────────────
     let state = listener::ListenerState::new();
-    listener::run(config, rpc_client, bundle_wallets, &ws_url, &state).await;
+    listener::run(config, rpc_client, bundle_wallets, &ws_url, &state, bot_active).await;
 
     Ok(())
 }

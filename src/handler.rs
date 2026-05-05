@@ -76,8 +76,8 @@ pub async fn handle_buy(config: &Config, rpc_client: Arc<RpcClient>, pool_info: 
     instructions.push(build_swap_instruction(
         &pool_info,
         user,
-        user_token_account,
         user_wsol_account,
+        user_token_account,
         sol_lamports,
         min_token_out,
         base_token_program,

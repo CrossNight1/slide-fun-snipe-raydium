@@ -56,4 +56,3 @@ pub const JITO_REGIONS: &[&str] = &["london", "singapore", "ny", "amsterdam", "t
 pub const SWAP_BASE_IN: u8 = 9; // AMM v4 swapBaseIn
 
 // File paths
-pub const LOG_FILE: &str = "slidefun_sniper.log";
