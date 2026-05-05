@@ -121,19 +121,43 @@ async fn get_explanation() -> impl IntoResponse {
     }
 }
 
-/// GET /api/config — return config with private keys masked
+/// GET /api/config — return config with private keys masked and pubkeys attached
 async fn get_config() -> impl IntoResponse {
+    use solana_sdk::signature::Keypair;
+    use solana_sdk::signer::Signer;
+
     let cfg = AppConfig::load();
     let mut val = serde_json::to_value(&cfg).unwrap();
 
-    // Mask private keys for safety
-    if let Some(pk) = val["main_wallet"]["private_key"].as_str() {
-        val["main_wallet"]["private_key"] = json!(mask_key(pk));
+    // Helper to derive pubkey
+    let derive_pubkey = |pk_str: &str| -> Option<String> {
+        let bytes = bs58::decode(pk_str).into_vec().ok()?;
+        if bytes.len() == 64 {
+            Keypair::from_bytes(&bytes).ok().map(|k| k.pubkey().to_string())
+        } else if bytes.len() == 32 {
+            let array: [u8; 32] = bytes.try_into().ok()?;
+            Keypair::from_seed(&array).ok().map(|k| k.pubkey().to_string())
+        } else {
+            None
+        }
+    };
+
+    // Process main wallet
+    if let Some(pk) = val["main_wallet"]["private_key"].as_str().map(|s| s.to_string()) {
+        if let Some(pubkey) = derive_pubkey(&pk) {
+            val["main_wallet"]["pubkey"] = json!(pubkey);
+        }
+        val["main_wallet"]["private_key"] = json!(mask_key(&pk));
     }
+
+    // Process sub-wallets
     if let Some(arr) = val["bundle_wallets"].as_array_mut() {
         for w in arr.iter_mut() {
-            if let Some(pk) = w["private_key"].as_str() {
-                w["private_key"] = json!(mask_key(pk));
+            if let Some(pk) = w["private_key"].as_str().map(|s| s.to_string()) {
+                if let Some(pubkey) = derive_pubkey(&pk) {
+                    w["pubkey"] = json!(pubkey);
+                }
+                w["private_key"] = json!(mask_key(&pk));
             }
         }
     }
