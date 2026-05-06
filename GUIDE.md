@@ -35,7 +35,7 @@ Because they are in a bundle, either **BOTH** happen or **NEITHER** happens. You
 
 | Setting | What it does | Recommended |
 | :--- | :--- | :--- |
-| `snipe_mode` | `raydium` (standard), `slidefun` (pre-migration), or `both`. | `raydium` |
+| `snipe_mode` | `raydium` (standard), `slidefun` (pre-migration), `listen_creator` (track by dev), or `both`. | `raydium` |
 | `jito_tip` | The bribe amount in SOL. | `0.003` to `0.01` |
 | `cu_limit` | Compute Units. How much "brain power" the network uses for your swap. | `200,000` |
 | `priority_fee` | Micro-lamports to prioritize the tx. | `100,000` |
@@ -43,12 +43,19 @@ Because they are in a bundle, either **BOTH** happen or **NEITHER** happens. You
 
 ---
 
-## 🎯 Targeted Snipe (Whitelist)
+## 🎯 Targeted Snipe (Whitelist) & Listen Creator
 
-This is a powerful feature for "Called" tokens.
-1.  Enter the token address in the **Target Mints** section of the dashboard.
+These are powerful features for tracking specific tokens or developers.
+
+**Target Mints (Whitelist):**
+1.  Enter the token address in the **Target Whitelist** section of the dashboard.
 2.  The bot will sit silently and **only** fire when that specific token migrates.
-3.  This prevents you from accidentally buying 10 other tokens that happen to launch at the same time.
+3.  This prevents you from accidentally buying other tokens that happen to launch at the same time.
+
+**Listen Creator:**
+1.  Set the Snipe Mode to **Listen Creator**.
+2.  Enter the wallet address of a specific developer in the **Target Creators** list.
+3.  The bot will monitor Slide.fun creations. If the developer creates a token, it will track it in the background and automatically snipe it the second it hits Raydium.
 
 ---
 

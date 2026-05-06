@@ -29,6 +29,8 @@ pub struct WalletEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
+    #[serde(default = "default_network")]
+    pub network: String,
     pub helius_api_key: String,
     pub snipe_mode: String,
     pub dry_run: bool,
@@ -42,6 +44,8 @@ pub struct AppConfig {
     pub auto_snipe_all: bool,
     #[serde(default)]
     pub target_mints: Vec<String>,
+    #[serde(default)]
+    pub target_creators: Vec<String>,
     pub main_wallet: WalletEntry,
     pub bundle_wallets: Vec<WalletEntry>,
 }
@@ -49,6 +53,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
+            network: "mainnet".to_string(),
             helius_api_key: String::new(),
             snipe_mode: "raydium".to_string(),
             dry_run: true,
@@ -60,6 +65,7 @@ impl Default for AppConfig {
             slidefun_program: None,
             auto_snipe_all: false,
             target_mints: vec![],
+            target_creators: vec![],
             main_wallet: WalletEntry {
                 label: "Main Wallet".to_string(),
                 private_key: String::new(),
@@ -95,6 +101,7 @@ impl AppConfig {
     /// Build from legacy .env environment variables.
     fn from_env() -> Self {
         AppConfig {
+            network: env::var("SOLANA_NETWORK").unwrap_or_else(|_| "mainnet".to_string()),
             helius_api_key: env::var("HELIUS_API_KEY")
                 .unwrap_or_default(),
             snipe_mode: env::var("SNIPE_MODE")
@@ -109,6 +116,7 @@ impl AppConfig {
             slidefun_program: env::var("SLIDEFUN_PROGRAM").ok().filter(|v| !v.is_empty()),
             auto_snipe_all: parse_bool(&env::var("AUTO_SNIPE_ALL").unwrap_or_else(|_| "false".to_string())),
             target_mints: vec![],
+            target_creators: vec![],
             main_wallet: WalletEntry {
                 label: "Main Wallet".to_string(),
                 private_key: env::var("PRIVATE_KEY").unwrap_or_default(),
@@ -133,6 +141,7 @@ pub struct Config {
 
     // --- convenience shortcuts for hot paths ---
     pub keypair: Keypair,
+    pub network: String,
     pub helius_api_key: String,
     pub sol_amount: f64,
     pub cu_limit: u32,
@@ -174,6 +183,7 @@ impl Config {
             test_mode: app.test_mode,
             snipe_mode: app.snipe_mode.clone(),
             slidefun_pump_amount: app.slidefun_pump_amount,
+            network: app.network.clone(),
             helius_api_key: app.helius_api_key.clone(),
             bundle_wallets_file: "wallets.json".to_string(),
             bundle_sol_per_wallet: app.bundle_wallets
@@ -246,4 +256,8 @@ fn load_bundle_wallets_from_file(path: &str, default_sol: f64) -> Vec<WalletEntr
         }
     }
     wallets
+}
+
+fn default_network() -> String {
+    "mainnet".to_string()
 }

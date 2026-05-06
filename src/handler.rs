@@ -5,7 +5,7 @@
 use crate::{
     blockhash::get_blockhash,
     config::Config,
-    constants::{WSOL_MINT, JITO_TIP_ADDRESS},
+    constants::WSOL_MINT,
     log_info,
     transaction::build_swap_instruction,
     types::PoolInfo,
@@ -39,7 +39,7 @@ pub async fn handle_buy(config: &Config, rpc_client: Arc<RpcClient>, pool_info: 
 
     let user = config.keypair.pubkey();
     let base_token_program = pool_info.base_token_program;
-    let jito_tip_address = Pubkey::from_str(JITO_TIP_ADDRESS).unwrap();
+    let jito_tip_address = Pubkey::from_str(crate::constants::jito_tip_address()).unwrap();
     let wsol_mint = Pubkey::from_str(WSOL_MINT).unwrap();
 
     let sol_lamports = (config.sol_amount * LAMPORTS_PER_SOL as f64) as u64;

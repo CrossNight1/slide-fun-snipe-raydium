@@ -229,7 +229,7 @@ async fn build_pool_info_from_accounts(
 /// Requires 18+ accounts in the initialize2 instruction.
 pub async fn get_pool_info(rpc_client: &RpcClient, signature: &str) -> Option<PoolInfo> {
     let sig = Signature::from_str(signature).ok()?;
-    let amm_program = Pubkey::from_str(crate::constants::RAYDIUM_AMM_PROGRAM).unwrap();
+    let amm_program = Pubkey::from_str(crate::constants::raydium_amm_program()).unwrap();
 
     let config = RpcTransactionConfig {
         encoding: Some(solana_transaction_status_client_types::UiTransactionEncoding::Base64),
@@ -372,7 +372,7 @@ pub async fn get_pool_info(rpc_client: &RpcClient, signature: &str) -> Option<Po
 pub async fn find_pool_by_mint(rpc_client: &RpcClient, mint: &Pubkey) -> Option<PoolInfo> {
     use solana_client::rpc_filter::{RpcFilterType, Memcmp};
 
-    let amm_program = Pubkey::from_str(crate::constants::RAYDIUM_AMM_PROGRAM).unwrap();
+    let amm_program = Pubkey::from_str(crate::constants::raydium_amm_program()).unwrap();
     let wsol = Pubkey::from_str(crate::constants::WSOL_MINT).unwrap();
 
     log_info!("[POOL] Searching for pool for mint {}...", mint);

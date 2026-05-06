@@ -14,9 +14,13 @@ The **Mint Address** is the unique identifier for a specific token on the Solana
 The **Whitelist** (or Target Mints) is a list of specific token addresses you want the bot to watch.
 *   The bot will ignore all other tokens and **ONLY** fire when a token in this list graduates. Use this to focus on specific high-conviction launches.
 
-#### **2.5 Auto Snipe All (Flag)**
+#### **2.5. Target Creators (Listen Creator Mode)**
+When the bot is in **Listen Creator** mode, it uses this list of Developer Wallet Addresses.
+*   The bot quietly monitors Slide.fun for any tokens launched by these developers. Once found, it tracks them and automatically executes the snipe right as the token migrates to Raydium.
+
+#### **2.75 Auto Snipe All (Flag)**
 *   *ON (True):* The bot ignores the Whitelist and automatically snipes **EVERY** token that graduates from Slide.fun to Raydium.
-*   *OFF (False):* The bot only snipes tokens explicitly listed in your Whitelist. If the Whitelist is empty, it does nothing.
+*   *OFF (False):* The bot only snipes tokens explicitly listed in your Whitelist (or tracked via Listen Creator). If both lists are empty, it does nothing.
 
 #### **3. Jito Tip**
 A **Jito Tip** is a small bribe paid to validators who use the Jito-Solana client. 
@@ -45,3 +49,22 @@ These are additional wallets you control. When you "Bundle Buy," the bot fires m
 
 *   **Manual Buy:** Use this if a token is already live and you want to jump in with all your wallets at once.
 *   **Manual Sell:** Allows you to exit your position (or a percentage of it) across all wallets in one click. The bot will also "Close" the WSOL accounts to reclaim the rent (roughly 0.002 SOL per wallet).
+
+---
+
+### 🧪 Testing on Devnet
+
+If you want to test the bot on Solana **Devnet** (e.g. for Slide.fun beta), follow these steps:
+
+1. **Switch Network:** In the Dashboard -> Core Settings, change the **Target Network** to **Devnet**.
+2. **Set Devnet Program IDs:** Slide.fun and Raydium often use different program IDs on Devnet. You can override these in your `.env` file:
+   ```bash
+   # Example Devnet Overrides
+   RAYDIUM_AMM_PROGRAM=HWy90Zp86mN6p605C6U1Q8Jv5786W3K8092u2S8869S
+   SLIDEFUN_PROGRAM=GkF6F9GNPjzkC18Xa3a88xwEc5vwyQDA1iXvFkKBqNDC
+   ```
+3. **Jito on Devnet:** Note that Jito bundles work differently on Devnet. If you encounter errors, you can provide a Devnet-specific bundle URL in `.env`:
+   ```bash
+   JITO_BUNDLE_URLS=https://devnet.block-engine.jito.wtf/api/v1/bundles
+   ```
+4. **Dry Run first:** Even on Devnet, it's good practice to keep **Dry Run** ON initially to verify the bot is correctly seeing the creation and graduation events.

@@ -223,7 +223,7 @@ pub async fn handle_slidefun_buy(
     // 6. The buy instruction
     // 7. Jito tip
 
-    let jito_tip_address = Pubkey::from_str(constants::JITO_TIP_ADDRESS).unwrap();
+    let jito_tip_address = Pubkey::from_str(crate::constants::jito_tip_address()).unwrap();
 
     let buy_ix = build_slidefun_buy_instruction(
         &user,
@@ -325,16 +325,11 @@ pub fn is_creation_signal(logs: &[String]) -> bool {
 }
 
 /// Parse the transaction to extract the new token mint from `create_bonding_curve`.
-/// From the IDL, create_bonding_curve accounts:
-///   [0] config (PDA)
-///   [1] bonding_curve (writable, PDA)
-///   [2] token (the NEW token mint)  ← index 2
-///   [3] payment
-///   ...
-pub async fn extract_new_token(
+/// Returns (token_mint, creator_pubkey)
+pub async fn extract_new_token_and_creator(
     rpc_client: &RpcClient,
     signature: &str,
-) -> Option<String> {
+) -> Option<(String, String)> {
     let slidefun_program = get_slidefun_program();
     let sig = Signature::from_str(signature).ok()?;
     let config = RpcTransactionConfig {
@@ -379,10 +374,14 @@ pub async fn extract_new_token(
                         }
 
                         // account[2] = token mint
+                        // The creator is typically the fee payer, which is all_keys[0], or we can extract the signer from the ix.accounts if it exists.
+                        // On slide.fun IDL (standard pumpfun fork), the user who creates the curve is account 0 of the create_bonding_curve instruction or all_keys[0].
+                        // Let's use all_keys[0] which is the fee payer and signer of the transaction.
                         if ix.accounts.len() > 2 {
                             let token_mint = all_keys[ix.accounts[2] as usize];
-                            log_info!("[SFSNIPE] ✅ New token detected: {}", token_mint);
-                            return Some(token_mint.to_string());
+                            let creator = all_keys[0]; // Fee payer is the creator
+                            log_info!("[SFSNIPE] ✅ New token detected: {} by creator: {}", token_mint, creator);
+                            return Some((token_mint.to_string(), creator.to_string()));
                         }
                     }
                 }
@@ -396,4 +395,12 @@ pub async fn extract_new_token(
         }
     }
     None
+}
+
+/// Fallback compatibility
+pub async fn extract_new_token(
+    rpc_client: &RpcClient,
+    signature: &str,
+) -> Option<String> {
+    extract_new_token_and_creator(rpc_client, signature).await.map(|(mint, _)| mint)
 }

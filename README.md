@@ -50,9 +50,10 @@ The dashboard is where you control everything. No more editing messy code!
 *   **Jito Tip**: The "bribe" amount. `0.003` is a good standard. Increase this during high competition.
 *   **Dry Run**: **STAY ON TRUE** until you are ready. This lets you test without spending real SOL.
 
-### 🎯 3. Target Mints (Whitelist)
-*   **Empty List**: The bot snipes **EVERY** token that graduates from Slide.fun.
-*   **Adding Addresses**: If you add a contract address (Mint Address) here, the bot will **IGNORE** everything else and **ONLY** snipe that specific token. Use this if you are following a "caller" or a specific launch.
+### 🎯 3. Target Mints (Whitelist) & Target Creators
+*   **Auto Snipe All**: If ON, the bot snipes **EVERY** token that graduates from Slide.fun.
+*   **Target Mints**: If you add a contract address here, the bot will **IGNORE** everything else and **ONLY** snipe that specific token.
+*   **Target Creators (Listen Creator Mode)**: If you select **Listen Creator** mode, you can add Creator Wallet Addresses here. The bot will watch Slide.fun for new tokens created by these specific developers, and automatically snipe them the exact moment they graduate and add liquidity to Raydium.
 
 ### ⚡ 4. Manual Bundle Actions
 *   **What is it?**: A tool to instantly buy or sell a specific token across *all* your wallets at the exact same time using Jito bundles.

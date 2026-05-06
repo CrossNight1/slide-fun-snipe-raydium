@@ -67,7 +67,7 @@ fn build_tip_tx(
     blockhash: Hash,
 ) -> Option<VersionedTransaction> {
     let user = main_keypair.pubkey();
-    let jito_tip_address = Pubkey::from_str(constants::JITO_TIP_ADDRESS).unwrap();
+    let jito_tip_address = Pubkey::from_str(constants::jito_tip_address()).unwrap();
 
     // Add bundle_index lamports so each tip TX has a unique signature
     let tip = jito_tip_lamports + bundle_index as u64;
@@ -323,18 +323,19 @@ async fn log_bundle_onchain_after_wait(
 /// → If any endpoint is rate-limited, the others will still accept the bundle.
 /// → First acceptance wins; subsequent acceptances are silently ignored.
 async fn fire_bundles(bundles: Vec<Vec<String>>) {
-    use constants::{JITO_BUNDLE_URLS, JITO_REGIONS};
+    use constants::{jito_bundle_urls};
 
     for (i, bundle) in bundles.into_iter().enumerate() {
         // Fire to all endpoints in parallel
-        let futs: Vec<_> = JITO_BUNDLE_URLS
+        let urls = jito_bundle_urls();
+        let futs: Vec<_> = urls
             .iter()
-            .zip(JITO_REGIONS.iter())
-            .map(|(&url, &region)| {
+            .map(|url| {
                 let b = bundle.clone();
+                let url_str = url.clone();
                 async move {
-                    let result = send_bundle_to_url(&b, url).await;
-                    (region, result)
+                    let result = send_bundle_to_url(&b, &url_str).await;
+                    (url_str, result)
                 }
             })
             .collect();
@@ -426,7 +427,12 @@ pub async fn raydium_bundle_buy(
         wallets.len(), config.jito_tip);
 
     // RPC client for balance checks / fresh blockhash on retry
-    let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
+    let base_url = if config.network.to_lowercase() == "devnet" {
+        "devnet.helius-rpc.com"
+    } else {
+        "mainnet.helius-rpc.com"
+    };
+    let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
     let rpc = RpcClient::new(rpc_url);
 
     // Capture pre-buy balances for all wallets (used to detect confirmed buys)
@@ -648,7 +654,12 @@ pub async fn raydium_bundle_sell(
 
     log_info!("[BUNDLE] 🚀 Multi-wallet SELL: {} wallets, {:.1}% of tokens", wallets.len(), percent);
 
-    let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
+    let base_url = if config.network.to_lowercase() == "devnet" {
+        "devnet.helius-rpc.com"
+    } else {
+        "mainnet.helius-rpc.com"
+    };
+    let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
     let rpc = RpcClient::new(rpc_url);
 
     let mut sell_txs = Vec::new();
@@ -701,7 +712,12 @@ pub async fn slidefun_bundle_buy(
     log_info!("[BUNDLE] 🚀 Slide.fun bundle buy: {} wallets (tip={} SOL each bundle)",
         wallets.len(), config.jito_tip);
 
-    let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
+    let base_url = if config.network.to_lowercase() == "devnet" {
+        "devnet.helius-rpc.com"
+    } else {
+        "mainnet.helius-rpc.com"
+    };
+    let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
     let rpc = RpcClient::new(rpc_url);
 
     // Capture pre-buy balances

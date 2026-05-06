@@ -44,6 +44,8 @@ pub struct ListenerState {
     pub ata_pre_created_tokens: Arc<Mutex<HashSet<String>>>,
     /// Deduplication: tokens already sniped (avoids double-buying the same token)
     pub sniped_tokens: Arc<Mutex<HashSet<String>>>,
+    /// Tokens tracked from specific creators (listen_creator mode)
+    pub creator_tracked_tokens: Arc<Mutex<HashSet<String>>>,
 }
 
 impl ListenerState {
@@ -52,6 +54,7 @@ impl ListenerState {
             graduating_tokens: Arc::new(Mutex::new(HashSet::new())),
             ata_pre_created_tokens: Arc::new(Mutex::new(HashSet::new())),
             sniped_tokens: Arc::new(Mutex::new(HashSet::new())),
+            creator_tracked_tokens: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 }
@@ -66,7 +69,8 @@ pub async fn run(
     bot_active: Arc<AtomicBool>,
 ) {
     let enable_slidefun_create = matches!(config.snipe_mode.as_str(), "slidefun" | "both");
-    let enable_raydium_migrate = matches!(config.snipe_mode.as_str(), "raydium" | "both");
+    let enable_raydium_migrate = matches!(config.snipe_mode.as_str(), "raydium" | "both" | "listen_creator");
+    let enable_listen_creator = config.snipe_mode == "listen_creator";
 
     let slidefun_program = Pubkey::from_str(constants::slidefun_program()).unwrap();
     let amm_program = Pubkey::from_str(constants::RAYDIUM_AMM_PROGRAM).unwrap();
@@ -130,8 +134,8 @@ pub async fn run(
                         Some(("slidefun", log)) => {
                             let logs = log.value.logs.clone();
 
-                            // Mode: SLIDEFUN_CREATE — buy immediately on token creation
-                            if enable_slidefun_create && slidefun_snipe::is_creation_signal(&logs) {
+                            // Mode: SLIDEFUN_CREATE or LISTEN_CREATOR
+                            if (enable_slidefun_create || enable_listen_creator) && slidefun_snipe::is_creation_signal(&logs) {
                                 let signature = log.value.signature.clone();
                                 log_info!("[SFSNIPE] 🆕 New Slide.fun token! TX: {}", signature);
 
@@ -139,11 +143,25 @@ pub async fn run(
                                 let cfg_c = config.clone();
                                 let sniped_c = state.sniped_tokens.clone();
                                 let wallets_c = bundle_wallets.clone();
+                                let creator_c = state.creator_tracked_tokens.clone();
+                                let grad_c = state.graduating_tokens.clone();
 
                                 tokio::spawn(async move {
-                                    if let Some(mint) =
-                                        slidefun_snipe::extract_new_token(&rpc_c, &signature).await
+                                    if let Some((mint, creator)) =
+                                        slidefun_snipe::extract_new_token_and_creator(&rpc_c, &signature).await
                                     {
+                                        if enable_listen_creator {
+                                            if cfg_c.app.target_creators.contains(&creator) {
+                                                log_info!("[LISTEN_CREATOR] 🎯 Tracking token {} from creator {}", mint, creator);
+                                                creator_c.lock().await.insert(mint.clone());
+                                                // Also add to graduation watch-list so we can pre-create ATA if needed
+                                                grad_c.lock().await.insert(mint.clone());
+                                            } else {
+                                                log_info!("   [SKIP] Creator {} not in target_creators", creator);
+                                            }
+                                            return; // Stop here, we don't buy immediately
+                                        }
+
                                         if !cfg_c.is_whitelisted(&mint) {
                                             log_info!("   [SKIP] {} not in target whitelist", mint);
                                             return;
@@ -245,6 +263,7 @@ pub async fn run(
                             let ata_c = state.ata_pre_created_tokens.clone();
                             let sniped_c = state.sniped_tokens.clone();
                             let wallets_c = bundle_wallets.clone();
+                            let creator_c = state.creator_tracked_tokens.clone();
 
                             tokio::spawn(async move {
                                 if let Some(pool_info) =
@@ -252,8 +271,12 @@ pub async fn run(
                                 {
                                     let token_key = pool_info.base_mint.to_string();
 
-                                    if !cfg_c.is_whitelisted(&token_key) {
-                                        log_info!("   [SKIP] {} not in target whitelist", token_key);
+                                    let mut is_target = cfg_c.is_whitelisted(&token_key);
+                                    if !is_target && cfg_c.snipe_mode == "listen_creator" {
+                                        is_target = creator_c.lock().await.contains(&token_key);
+                                    }
+                                    if !is_target {
+                                        log_info!("   [SKIP] {} not in target whitelist or tracked by creator", token_key);
                                         return;
                                     }
 

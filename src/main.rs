@@ -48,12 +48,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── 5. Build RPC / WebSocket URLs ────────────────────────────────────────
+    let base_url = if config.network.to_lowercase() == "devnet" {
+        "devnet.helius-rpc.com"
+    } else {
+        "mainnet.helius-rpc.com"
+    };
+
     let rpc_url = format!(
-        "https://mainnet.helius-rpc.com/?api-key={}",
+        "https://{}?api-key={}",
+        base_url,
         config.helius_api_key
     );
     let ws_url = format!(
-        "wss://mainnet.helius-rpc.com/?api-key={}",
+        "wss://{}?api-key={}",
+        base_url,
         config.helius_api_key
     );
 

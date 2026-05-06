@@ -295,7 +295,7 @@
   .log-line.snipe { color: #a78bfa; font-weight: 600; }
 
   /* ── Custom Select / Mode ── */
-  .mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .mode-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
   .mode-option {
     padding: 12px;
     text-align: center;
@@ -395,7 +395,7 @@
             <span class="stat-dot green" id="log-conn-dot"></span> <span id="log-conn-text">CONNECTED</span>
           </div>
         </div>
-        <div style="font-size: 0.8rem; font-weight: 700; opacity: 0.5;">SOLANA MAINNET v0.2.0</div>
+        <div id="network-display" style="font-size: 0.8rem; font-weight: 700; opacity: 0.5;">SOLANA MAINNET v0.2.0</div>
       </header>
 
       <div style="display: flex; flex: 1; overflow: hidden;">
@@ -409,6 +409,13 @@
               <div class="field" style="margin-bottom: 20px;">
                 <label>Helius API Key</label>
                 <input id="helius_api_key" type="password" placeholder="Enter API Key..."/>
+              </div>
+              <div class="field" style="margin-bottom: 20px;">
+                <label>Target Network</label>
+                <select id="network">
+                  <option value="mainnet">Mainnet Beta</option>
+                  <option value="devnet">Devnet</option>
+                </select>
               </div>
               <div class="form-row">
                 <div class="field">
@@ -442,6 +449,7 @@
                 <div class="mode-option" data-mode="raydium">Raydium</div>
                 <div class="mode-option" data-mode="slidefun">Slide.fun</div>
                 <div class="mode-option" data-mode="both">Both</div>
+                <div class="mode-option" data-mode="listen_creator">Listen Creator</div>
               </div>
               <input type="hidden" id="snipe_mode" value="raydium"/>
 
@@ -470,11 +478,19 @@
             </div>
 
             <!-- Whitelist -->
-            <div class="card" style="grid-column: span 2;">
+            <div class="card" style="grid-column: span 1;">
               <div class="card-title"><div class="card-title-icon">📝</div> Target Whitelist</div>
               <p style="font-size: 0.75rem; color: var(--muted); margin-bottom: 16px;">The bot will only trade these tokens if Auto Snipe All is OFF.</p>
               <div id="mints-container" class="mint-list"></div>
               <button class="btn btn-outline btn-sm" onclick="addMint()" style="margin-top: 16px; width: 100%">+ Add New Target Mint</button>
+            </div>
+
+            <!-- Target Creators -->
+            <div class="card" style="grid-column: span 1;">
+              <div class="card-title"><div class="card-title-icon">👤</div> Target Creators</div>
+              <p style="font-size: 0.75rem; color: var(--muted); margin-bottom: 16px;">Only used in Listen Creator mode to track tokens by creator.</p>
+              <div id="creators-container" class="mint-list"></div>
+              <button class="btn btn-outline btn-sm" onclick="addCreator()" style="margin-top: 16px; width: 100%">+ Add New Creator</button>
             </div>
 
             <!-- Manual Actions -->
@@ -595,6 +611,7 @@
     // ── State ──────────────────────────────────────────────────────────
     let bundleWallets = [];
     let targetMints = [];
+    let targetCreators = [];
     let botActive = false;
 
     // ── Bot State Toggle ──────────────────────────────────────────────
@@ -641,6 +658,7 @@
         const cfg = await res.json();
 
         document.getElementById('helius_api_key').value = cfg.helius_api_key || '';
+        document.getElementById('network').value = cfg.network || 'mainnet';
         document.getElementById('jito_tip').value = cfg.jito_tip ?? 0.003;
         document.getElementById('cu_limit').value = cfg.cu_limit ?? 200000;
         document.getElementById('priority_fee').value = cfg.priority_fee ?? 100000;
@@ -655,6 +673,9 @@
         targetMints = cfg.target_mints || [];
         renderMints();
 
+        targetCreators = cfg.target_creators || [];
+        renderCreators();
+
         const mw = cfg.main_wallet || {};
         document.getElementById('main_label').value = mw.label || 'Main Wallet';
         document.getElementById('main_pk').value = mw.private_key || '';
@@ -668,6 +689,7 @@
         bundleWallets = cfg.bundle_wallets || [];
         renderWallets();
         updateHeaderBadge(cfg.dry_run, cfg.snipe_mode);
+        document.getElementById('network-display').textContent = `SOLANA ${(cfg.network || 'mainnet').toUpperCase()} v0.2.0`;
 
       } catch(e){ console.error('Load failed', e); }
     }
@@ -675,6 +697,7 @@
     async function saveConfig(){
       const payload = {
         helius_api_key: document.getElementById('helius_api_key').value,
+        network: document.getElementById('network').value,
         jito_tip: parseFloat(document.getElementById('jito_tip').value),
         cu_limit: parseInt(document.getElementById('cu_limit').value),
         priority_fee: parseInt(document.getElementById('priority_fee').value),
@@ -684,6 +707,7 @@
         test_mode: document.getElementById('test_mode').checked,
         snipe_mode: document.getElementById('snipe_mode').value,
         target_mints: targetMints,
+        target_creators: targetCreators,
         main_wallet: {
           label: document.getElementById('main_label').value,
           private_key: document.getElementById('main_pk').value,
@@ -702,6 +726,7 @@
         if(res.ok){
           showToast('✅ Configuration Saved');
           updateHeaderBadge(payload.dry_run, payload.snipe_mode);
+          document.getElementById('network-display').textContent = `SOLANA ${(payload.network || 'mainnet').toUpperCase()} v0.2.0`;
         } else { showToast('❌ Save failed', true); }
       } catch(e){ showToast('❌ Network error', true); }
     }
@@ -722,6 +747,22 @@
     }
     function addMint(){ targetMints.push(''); renderMints(); }
     function removeMint(i){ targetMints.splice(i,1); renderMints(); }
+
+    function renderCreators(){
+      const container = document.getElementById('creators-container');
+      container.innerHTML = '';
+      targetCreators.forEach((c,i) => {
+        const div = document.createElement('div');
+        div.className = 'mint-item';
+        div.innerHTML = `
+          <input value="${esc(c)}" oninput="targetCreators[${i}]=this.value" placeholder="Creator Address..."/>
+          <button class="btn btn-danger btn-sm" onclick="removeCreator(${i})">✕</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+    function addCreator(){ targetCreators.push(''); renderCreators(); }
+    function removeCreator(i){ targetCreators.splice(i,1); renderCreators(); }
 
     function renderWallets(){
       const container = document.getElementById('wallet-list-container');

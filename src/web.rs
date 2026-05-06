@@ -186,6 +186,7 @@ async fn save_config(Json(incoming): Json<Value>) -> impl IntoResponse {
     };}
 
     patch_str!(existing.helius_api_key, incoming["helius_api_key"]);
+    patch_str!(existing.network, incoming["network"]);
     patch_str!(existing.snipe_mode, incoming["snipe_mode"]);
     patch_bool!(existing.dry_run, incoming["dry_run"]);
     patch_bool!(existing.test_mode, incoming["test_mode"]);
@@ -198,6 +199,15 @@ async fn save_config(Json(incoming): Json<Value>) -> impl IntoResponse {
     // Target Mints (Whitelist)
     if let Some(mints) = incoming["target_mints"].as_array() {
         existing.target_mints = mints.iter()
+            .filter_map(|m| m.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+    }
+
+    // Target Creators
+    if let Some(creators) = incoming["target_creators"].as_array() {
+        existing.target_creators = creators.iter()
             .filter_map(|m| m.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
@@ -291,7 +301,12 @@ async fn manual_bundle_buy(Json(req): Json<ManualBuyReq>) -> impl IntoResponse {
         Err(_) => return (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid mint address"}))).into_response(),
     };
 
-    let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
+    let base_url = if config.network.to_lowercase() == "devnet" {
+        "devnet.helius-rpc.com"
+    } else {
+        "mainnet.helius-rpc.com"
+    };
+    let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
     let rpc = RpcClient::new(rpc_url);
 
     let bundle_wallets = config.enabled_bundle_keypairs();
@@ -326,7 +341,12 @@ async fn manual_bundle_sell(Json(req): Json<ManualSellReq>) -> impl IntoResponse
         Err(_) => return (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid mint address"}))).into_response(),
     };
 
-    let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
+    let base_url = if config.network.to_lowercase() == "devnet" {
+        "devnet.helius-rpc.com"
+    } else {
+        "mainnet.helius-rpc.com"
+    };
+    let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
     let rpc = RpcClient::new(rpc_url);
 
     let bundle_wallets = config.enabled_bundle_keypairs();

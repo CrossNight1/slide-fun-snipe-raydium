@@ -1,5 +1,5 @@
 use crate::{
-    constants::{JITO_BUNDLE_URLS, RAYDIUM_AMM_PROGRAM, RAYDIUM_AUTHORITY, SWAP_BASE_IN},
+    constants::{jito_bundle_urls, raydium_amm_program, raydium_authority, SWAP_BASE_IN},
     log_info,
     types::PoolInfo,
 };
@@ -34,7 +34,8 @@ fn jito_region_name(url: &str) -> &str {
 /// Send bundle to ALL Jito endpoints simultaneously for maximum speed
 pub async fn send_via_jito(encoded_txs: &[String]) -> Result<String, Box<dyn std::error::Error>> {
     let mut inflight = FuturesUnordered::new();
-    for url in JITO_BUNDLE_URLS {
+    let urls = jito_bundle_urls();
+    for url in &urls {
         let url_str = url.to_string();
         let region = jito_region_name(url).to_string();
         let txs_clone = encoded_txs.to_vec();
@@ -136,7 +137,8 @@ pub async fn send_bundle_to_url(
 /// Simulate a bundle against the first available Jito endpoint.
 /// Returns the simulation result JSON for debugging.
 pub async fn simulate_bundle_jito(encoded_txs: &[String]) -> Result<Value, Box<dyn std::error::Error>> {
-    for url in JITO_BUNDLE_URLS {
+    let urls = jito_bundle_urls();
+    for url in &urls {
         let payload = json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -147,7 +149,7 @@ pub async fn simulate_bundle_jito(encoded_txs: &[String]) -> Result<Value, Box<d
             ]
         });
 
-        let response = match JITO_HTTP_CLIENT.post(*url).json(&payload).send().await {
+        let response = match JITO_HTTP_CLIENT.post(url).json(&payload).send().await {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -178,8 +180,8 @@ pub fn build_swap_instruction(
     min_amount_out: u64,
     token_program: Pubkey,
 ) -> Instruction {
-    let raydium_program = Pubkey::from_str(RAYDIUM_AMM_PROGRAM).unwrap();
-    let raydium_authority = Pubkey::from_str(RAYDIUM_AUTHORITY).unwrap();
+    let raydium_program = Pubkey::from_str(raydium_amm_program()).unwrap();
+    let raydium_authority = Pubkey::from_str(raydium_authority()).unwrap();
 
     let accounts = vec![
         AccountMeta::new_readonly(token_program, false),
