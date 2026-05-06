@@ -13,7 +13,7 @@ mod types;
 mod wallet;
 mod web;
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{Arc, atomic::AtomicBool};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{hash::Hash, signer::Signer};
 use tokio::time::{sleep, Duration};

@@ -10,8 +10,9 @@
 //   bundle_wallets [ { label, private_key, sol_amount, enabled } ]
 
 use serde::{Deserialize, Serialize};
-use solana_sdk::signer::keypair::Keypair;
-use std::{env, path::Path};
+use solana_sdk::{pubkey::Pubkey, signer::keypair::Keypair};
+use std::{env, path::Path, str::FromStr};
+use crate::constants;
 
 pub const CONFIG_FILE: &str = "config.json";
 
@@ -41,6 +42,8 @@ pub struct AppConfig {
     pub slidefun_pump_amount: f64,
     pub slidefun_program: Option<String>,
     #[serde(default)]
+    pub listen_creator: bool,
+    #[serde(default)]
     pub auto_snipe_all: bool,
     #[serde(default)]
     pub target_mints: Vec<String>,
@@ -63,6 +66,7 @@ impl Default for AppConfig {
             priority_fee: 100_000,
             slidefun_pump_amount: 0.05,
             slidefun_program: None,
+            listen_creator: false,
             auto_snipe_all: false,
             target_mints: vec![],
             target_creators: vec![],
@@ -114,6 +118,7 @@ impl AppConfig {
             priority_fee: env::var("PRIORITY_FEE").ok().and_then(|v| v.parse().ok()).unwrap_or(100_000),
             slidefun_pump_amount: env::var("SLIDEFUN_PUMP_AMOUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.05),
             slidefun_program: env::var("SLIDEFUN_PROGRAM").ok().filter(|v| !v.is_empty()),
+            listen_creator: parse_bool(&env::var("LISTEN_CREATOR").unwrap_or_else(|_| "false".to_string())),
             auto_snipe_all: parse_bool(&env::var("AUTO_SNIPE_ALL").unwrap_or_else(|_| "false".to_string())),
             target_mints: vec![],
             target_creators: vec![],
@@ -151,8 +156,7 @@ pub struct Config {
     pub test_mode: bool,
     pub snipe_mode: String,
     pub slidefun_pump_amount: f64,
-    pub bundle_wallets_file: String, // kept for compat, unused in JSON mode
-    pub bundle_sol_per_wallet: f64,
+
 }
 
 impl Config {
@@ -185,11 +189,7 @@ impl Config {
             slidefun_pump_amount: app.slidefun_pump_amount,
             network: app.network.clone(),
             helius_api_key: app.helius_api_key.clone(),
-            bundle_wallets_file: "wallets.json".to_string(),
-            bundle_sol_per_wallet: app.bundle_wallets
-                .first()
-                .map(|w| w.sol_amount)
-                .unwrap_or(0.05),
+
             keypair,
             app,
         }
@@ -221,6 +221,15 @@ impl Config {
             return true;
         }
         self.app.target_mints.iter().any(|m| m == mint)
+    }
+
+    /// Get Slide.fun program ID from config or constant.
+    pub fn slidefun_program(&self) -> Pubkey {
+        if let Some(prog) = &self.app.slidefun_program {
+            Pubkey::from_str(prog).unwrap_or_else(|_| Pubkey::from_str(constants::slidefun_program()).unwrap())
+        } else {
+            Pubkey::from_str(constants::slidefun_program()).unwrap()
+        }
     }
 }
 

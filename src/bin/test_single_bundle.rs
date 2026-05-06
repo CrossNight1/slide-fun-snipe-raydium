@@ -51,7 +51,7 @@ async fn main() {
     let tip_tx = VersionedTransaction::try_new(VersionedMessage::V0(tip_msg), &[&config.keypair]).unwrap();
 
     // Build buy TX for wallet[1]
-    let sol_lamports = (config.bundle_sol_per_wallet * LAMPORTS_PER_SOL as f64) as u64;
+    let sol_lamports = (config.app.bundle_wallets.first().map(|w| w.sol_amount).unwrap_or(0.05) * LAMPORTS_PER_SOL as f64) as u64;
     let buy_tx = bundle_buy::build_raydium_buy_tx_for_wallet(
         wallet, &pool_info, sol_lamports, 0, config.cu_limit, config.priority_fee, bh,
     ).expect("Failed to build buy TX");

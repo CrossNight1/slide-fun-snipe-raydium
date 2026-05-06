@@ -97,13 +97,14 @@ pub async fn extract_graduating_token(
     rpc_client: &RpcClient,
     signature: &str,
     logs: &[String],
+    program_id: &Pubkey,
 ) -> Option<String> {
-    let slidefun_program = Pubkey::from_str(crate::constants::slidefun_program()).unwrap();
+    let slidefun_program = *program_id;
 
     // Verify it's actually a migrate instruction
     // Anchor programs emit: "Program log: Instruction: Migrate"
     let logs_joined = logs.join(" ");
-    let is_migrate = logs_joined.contains(crate::constants::slidefun_program())
+    let is_migrate = logs_joined.contains(&program_id.to_string())
         && logs_joined.contains("Instruction: Migrate");
 
     if !is_migrate {
@@ -196,9 +197,9 @@ pub async fn extract_graduating_token(
 
 /// Fast pre-filter: check logs without RPC call
 /// Anchor logs 'Program log: Instruction: Migrate' for migrate instruction.
-pub fn is_graduation_signal(logs: &[String]) -> bool {
+/// Must be from Slide.fun program AND contain Anchor migrate log
+pub fn is_graduation_signal(logs: &[String], program_id_str: &str) -> bool {
     let logs_str = logs.join(" ");
-    // Must be from Slide.fun program AND contain Anchor migrate log
-    logs_str.contains(crate::constants::slidefun_program())
+    logs_str.contains(program_id_str)
         && logs_str.contains("Instruction: Migrate")
 }

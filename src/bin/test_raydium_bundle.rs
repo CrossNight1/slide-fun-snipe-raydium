@@ -75,7 +75,7 @@ async fn main() {
     println!("  TX Sig     : {}", &signature[..20]);
     println!("  Main wallet: {}", config.keypair.pubkey());
     println!("  SOL/main   : {} SOL", config.sol_amount);
-    println!("  SOL/wallet : {} SOL", config.bundle_sol_per_wallet);
+    println!("  SOL/wallet : {} SOL", config.app.bundle_wallets.first().map(|w| w.sol_amount).unwrap_or(0.05));
     println!("  Jito tip   : {} SOL", config.jito_tip);
     println!();
 

@@ -10,7 +10,7 @@ use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use solana_sdk::signature::SeedDerivable;
 use axum::{
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{Html, IntoResponse, Sse},
     routing::{get, post},
     Json, Router,
@@ -169,76 +169,134 @@ async fn save_config(Json(incoming): Json<Value>) -> impl IntoResponse {
     // Load existing config to preserve masked private keys
     let mut existing = AppConfig::load();
 
-    macro_rules! patch_str { ($field:expr, $key:expr) => {
-        if let Some(v) = $key.as_str() { if !v.is_empty() { $field = v.to_string(); } }
-    };}
-    macro_rules! patch_f64 { ($field:expr, $key:expr) => {
-        if let Some(v) = $key.as_f64() { $field = v; }
-    };}
-    macro_rules! patch_u64 { ($field:expr, $key:expr) => {
-        if let Some(v) = $key.as_u64() { $field = v; }
-    };}
-    macro_rules! patch_u32 { ($field:expr, $key:expr) => {
-        if let Some(v) = $key.as_u64() { $field = v as u32; }
-    };}
-    macro_rules! patch_bool { ($field:expr, $key:expr) => {
-        if let Some(v) = $key.as_bool() { $field = v; }
-    };}
+    let mut changes = Vec::new();
 
-    patch_str!(existing.helius_api_key, incoming["helius_api_key"]);
-    patch_str!(existing.network, incoming["network"]);
-    patch_str!(existing.snipe_mode, incoming["snipe_mode"]);
-    patch_bool!(existing.dry_run, incoming["dry_run"]);
-    patch_bool!(existing.test_mode, incoming["test_mode"]);
-    patch_f64!(existing.jito_tip, incoming["jito_tip"]);
-    patch_u32!(existing.cu_limit, incoming["cu_limit"]);
-    patch_u64!(existing.priority_fee, incoming["priority_fee"]);
-    patch_bool!(existing.auto_snipe_all, incoming["auto_snipe_all"]);
-    patch_f64!(existing.slidefun_pump_amount, incoming["slidefun_pump_amount"]);
+    if let Some(v) = incoming["helius_api_key"].as_str() {
+        if !v.is_empty() && v != existing.helius_api_key {
+            existing.helius_api_key = v.to_string();
+            changes.push("Helius API Key updated".to_string());
+        }
+    }
+    if let Some(v) = incoming["network"].as_str() {
+        if v != existing.network {
+            existing.network = v.to_string();
+            changes.push(format!("Network -> {}", v));
+        }
+    }
+    if let Some(v) = incoming["snipe_mode"].as_str() {
+        if v != existing.snipe_mode {
+            existing.snipe_mode = v.to_string();
+            changes.push(format!("Mode -> {}", v.to_uppercase()));
+        }
+    }
+    if let Some(v) = incoming["dry_run"].as_bool() {
+        if v != existing.dry_run {
+            existing.dry_run = v;
+            changes.push(format!("Dry Run -> {}", v));
+        }
+    }
+    if let Some(v) = incoming["test_mode"].as_bool() {
+        if v != existing.test_mode {
+            existing.test_mode = v;
+            changes.push(format!("Test Mode -> {}", v));
+        }
+    }
+    if let Some(v) = incoming["jito_tip"].as_f64() {
+        if (v - existing.jito_tip).abs() > 0.0000001 {
+            existing.jito_tip = v;
+            changes.push(format!("Jito Tip -> {} SOL", v));
+        }
+    }
+    if let Some(v) = incoming["cu_limit"].as_u64() {
+        if v as u32 != existing.cu_limit {
+            existing.cu_limit = v as u32;
+            changes.push(format!("CU Limit -> {}", v));
+        }
+    }
+    if let Some(v) = incoming["priority_fee"].as_u64() {
+        if v != existing.priority_fee {
+            existing.priority_fee = v;
+            changes.push(format!("Priority Fee -> {} µ-lam", v));
+        }
+    }
+    if let Some(v) = incoming["auto_snipe_all"].as_bool() {
+        if v != existing.auto_snipe_all {
+            existing.auto_snipe_all = v;
+            changes.push(format!("Auto Snipe All -> {}", v));
+        }
+    }
+    if let Some(v) = incoming["listen_creator"].as_bool() {
+        if v != existing.listen_creator {
+            existing.listen_creator = v;
+            changes.push(format!("Listen Creator -> {}", v));
+        }
+    }
+    if let Some(v) = incoming["slidefun_pump_amount"].as_f64() {
+        if (v - existing.slidefun_pump_amount).abs() > 0.0000001 {
+            existing.slidefun_pump_amount = v;
+            changes.push(format!("Slide.fun Buy -> {} SOL", v));
+        }
+    }
+    if let Some(v) = incoming["slidefun_program"].as_str() {
+        if !v.is_empty() && Some(v.to_string()) != existing.slidefun_program {
+            existing.slidefun_program = Some(v.to_string());
+            changes.push(format!("Slide.fun Program -> {}", v));
+            crate::slidefun_snipe::clear_fee_to_cache();
+        }
+    }
 
     // Target Mints (Whitelist)
-    if let Some(mints) = incoming["target_mints"].as_array() {
-        existing.target_mints = mints.iter()
+    if let Some(mints_arr) = incoming["target_mints"].as_array() {
+        let new_mints: Vec<String> = mints_arr.iter()
             .filter_map(|m| m.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
+        if new_mints != existing.target_mints {
+            existing.target_mints = new_mints;
+            changes.push(format!("Whitelist updated ({} targets)", existing.target_mints.len()));
+        }
     }
 
     // Target Creators
-    if let Some(creators) = incoming["target_creators"].as_array() {
-        existing.target_creators = creators.iter()
+    if let Some(creators_arr) = incoming["target_creators"].as_array() {
+        let new_creators: Vec<String> = creators_arr.iter()
             .filter_map(|m| m.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
+        if new_creators != existing.target_creators {
+            existing.target_creators = new_creators;
+            changes.push(format!("Creators updated ({} targets)", existing.target_creators.len()));
+        }
     }
 
     // Main wallet
     if let Some(mw) = incoming["main_wallet"].as_object() {
-        if let Some(label) = mw["label"].as_str() { existing.main_wallet.label = label.to_string(); }
         if let Some(pk) = mw["private_key"].as_str() {
-            if !pk.contains("****") && !pk.is_empty() {
+            if !pk.contains("****") && !pk.is_empty() && pk != existing.main_wallet.private_key {
                 existing.main_wallet.private_key = pk.to_string();
+                changes.push("Main Wallet Key updated".to_string());
             }
         }
-        if let Some(sol) = mw["sol_amount"].as_f64() { existing.main_wallet.sol_amount = sol; }
-        if let Some(en) = mw["enabled"].as_bool() { existing.main_wallet.enabled = en; }
+        if let Some(sol) = mw["sol_amount"].as_f64() {
+            if (sol - existing.main_wallet.sol_amount).abs() > 0.0000001 {
+                existing.main_wallet.sol_amount = sol;
+                changes.push(format!("Main Wallet Snipe -> {} SOL", sol));
+            }
+        }
     }
 
-    // Bundle wallets — replace entire list
+    // Bundle wallets
     if let Some(arr) = incoming["bundle_wallets"].as_array() {
+        let mut wallet_changed = false;
         let existing_wallets = existing.bundle_wallets.clone();
-        existing.bundle_wallets = arr.iter().enumerate().map(|(i, w)| {
-            let existing_pk = existing_wallets.get(i)
-                .map(|e| e.private_key.clone())
-                .unwrap_or_default();
+        
+        let new_wallets: Vec<_> = arr.iter().enumerate().map(|(i, w)| {
+            let existing_pk = existing_wallets.get(i).map(|e| e.private_key.clone()).unwrap_or_default();
             let incoming_pk = w["private_key"].as_str().unwrap_or("");
-            let pk = if incoming_pk.contains("****") || incoming_pk.is_empty() {
-                existing_pk
-            } else {
-                incoming_pk.to_string()
-            };
+            let pk = if incoming_pk.contains("****") || incoming_pk.is_empty() { existing_pk } else { incoming_pk.to_string() };
+            
             crate::config::WalletEntry {
                 label: w["label"].as_str().unwrap_or(&format!("Wallet {}", i+1)).to_string(),
                 private_key: pk,
@@ -246,10 +304,35 @@ async fn save_config(Json(incoming): Json<Value>) -> impl IntoResponse {
                 enabled: w["enabled"].as_bool().unwrap_or(true),
             }
         }).collect();
+
+        if new_wallets.len() != existing.bundle_wallets.len() {
+            wallet_changed = true;
+        } else {
+            for (n, o) in new_wallets.iter().zip(existing.bundle_wallets.iter()) {
+                if n.label != o.label || n.private_key != o.private_key || (n.sol_amount - o.sol_amount).abs() > 0.0000001 || n.enabled != o.enabled {
+                    wallet_changed = true;
+                    break;
+                }
+            }
+        }
+
+        if wallet_changed {
+            existing.bundle_wallets = new_wallets;
+            changes.push(format!("Sub-wallets updated ({} active)", existing.bundle_wallets.iter().filter(|w| w.enabled).count()));
+        }
     }
 
     match existing.save() {
-        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+        Ok(_) => {
+            if changes.is_empty() {
+                crate::log_info!("[SYSTEM] Settings saved (no changes).");
+            } else {
+                for change in changes {
+                    crate::log_info!("[SYSTEM] SAVED: {}", change);
+                }
+            }
+            (StatusCode::OK, Json(json!({"ok": true}))).into_response()
+        },
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
     }
 }

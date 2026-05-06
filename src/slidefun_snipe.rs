@@ -60,24 +60,22 @@ use tokio::time::{sleep, Duration};
 // PDA derivation helpers
 // ==============================================================
 
-fn get_slidefun_program() -> Pubkey {
-    Pubkey::from_str(constants::slidefun_program()).unwrap()
-}
+
 
 /// Derive config PDA: seeds = [b"config"]
-pub fn derive_config_pda() -> Pubkey {
+pub fn derive_config_pda(program_id: &Pubkey) -> Pubkey {
     let (pda, _) = Pubkey::find_program_address(
         &[constants::SLIDEFUN_CONFIG_SEED],
-        &get_slidefun_program(),
+        program_id,
     );
     pda
 }
 
 /// Derive bonding_curve PDA: seeds = [b"bonding_curve", token_mint]
-pub fn derive_bonding_curve_pda(token_mint: &Pubkey) -> Pubkey {
+pub fn derive_bonding_curve_pda(token_mint: &Pubkey, program_id: &Pubkey) -> Pubkey {
     let (pda, _) = Pubkey::find_program_address(
         &[constants::SLIDEFUN_BONDING_CURVE_SEED, token_mint.as_ref()],
-        &get_slidefun_program(),
+        program_id,
     );
     pda
 }
@@ -94,22 +92,24 @@ pub fn build_slidefun_buy_instruction(
     token_mint: &Pubkey,
     payment_mint: &Pubkey,   // usually WSOL / So1111...
     fee_to: &Pubkey,         // from config account on-chain, fetched separately
+    program_id: &Pubkey,
+    token_program: &Pubkey,  // Token or Token-2022
     sol_amount_lamports: u64,
     min_token_out: u64,
 ) -> Instruction {
-    let slidefun_program = get_slidefun_program();
-    let token_program = Pubkey::from_str(constants::TOKEN_PROGRAM).unwrap();
+    let slidefun_program = program_id;
     let assoc_token_program =
         Pubkey::from_str("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL").unwrap();
     let system_program = solana_sdk::system_program::ID;
 
-    let config_pda = derive_config_pda();
-    let bonding_curve_pda = derive_bonding_curve_pda(token_mint);
+    let config_pda = derive_config_pda(slidefun_program);
+    let bonding_curve_pda = derive_bonding_curve_pda(token_mint, slidefun_program);
 
     // ATAs
-    let bonding_curve_token_ata = get_associated_token_address(&bonding_curve_pda, token_mint);
-    let bonding_curve_payment_ata = get_associated_token_address(&bonding_curve_pda, payment_mint);
-    let user_token_ata = get_associated_token_address(user, token_mint);
+    // Use spl_associated_token_account::get_associated_token_address_with_program_id to support Token-2022
+    let bonding_curve_token_ata = spl_associated_token_account::get_associated_token_address_with_program_id(&bonding_curve_pda, token_mint, token_program);
+    let bonding_curve_payment_ata = get_associated_token_address(&bonding_curve_pda, payment_mint); // WSOL is always standard Token
+    let user_token_ata = spl_associated_token_account::get_associated_token_address_with_program_id(user, token_mint, token_program);
     let user_payment_ata = get_associated_token_address(user, payment_mint);
     let fee_to_payment_ata = get_associated_token_address(fee_to, payment_mint);
 
@@ -126,7 +126,7 @@ pub fn build_slidefun_buy_instruction(
         AccountMeta::new(fee_to_payment_ata, false),     // [9] fee_to_payment_ata
         AccountMeta::new_readonly(assoc_token_program, false), // [10] associated_token_program
         AccountMeta::new_readonly(system_program, false),// [11] system_program
-        AccountMeta::new_readonly(token_program, false), // [12] token_program
+        AccountMeta::new_readonly(*token_program, false), // [12] token_program
     ];
 
     // Instruction data: 8-byte discriminator + amount (u64) + is_exact_in (bool=true) + input_number (u64=0)
@@ -136,22 +136,36 @@ pub fn build_slidefun_buy_instruction(
     data.extend_from_slice(&min_token_out.to_le_bytes()); // input_number (min tokens out)
 
     Instruction {
-        program_id: slidefun_program,
+        program_id: *slidefun_program,
         accounts,
         data,
     }
 }
 
-// ==============================================================
-// Config account fetcher (to get fee_to address)
-// ==============================================================
+use std::sync::Mutex;
+
+lazy_static::lazy_static! {
+    static ref CACHED_FEE_TO: Mutex<Option<Pubkey>> = Mutex::new(None);
+}
+
+/// Clear the cached fee_to address (used when Program ID changes).
+pub fn clear_fee_to_cache() {
+    let mut cache = CACHED_FEE_TO.lock().unwrap();
+    *cache = None;
+}
+
+/// Pre-fetch the fee_to address at startup to eliminate delay during trade.
+pub async fn pre_fetch_fee_to(rpc_client: &RpcClient, program_id: &Pubkey) {
+    if let Some(fee_to) = fetch_fee_to(rpc_client, program_id).await {
+        let mut cache = CACHED_FEE_TO.lock().unwrap();
+        *cache = Some(fee_to);
+        log_info!("[SFSNIPE] Fee-to address cached: {}", fee_to);
+    }
+}
 
 /// Fetch the `fee_to` pubkey from the Slide.fun Config PDA account.
-/// Config account layout (after 8-byte discriminator):
-///   admin: Pubkey (32)
-///   fee_to: Pubkey (32)  <-- at offset 8+32 = 40
-pub async fn fetch_fee_to(rpc_client: &RpcClient) -> Option<Pubkey> {
-    let config_pda = derive_config_pda();
+pub async fn fetch_fee_to(rpc_client: &RpcClient, program_id: &Pubkey) -> Option<Pubkey> {
+    let config_pda = derive_config_pda(program_id);
     match rpc_client.get_account(&config_pda).await {
         Ok(account) => {
             let data = &account.data;
@@ -159,7 +173,6 @@ pub async fn fetch_fee_to(rpc_client: &RpcClient) -> Option<Pubkey> {
                 log_info!("[SFSNIPE] Config account too short: {} bytes", data.len());
                 return None;
             }
-            // bytes 8..=39 = admin, bytes 40..=71 = fee_to
             let fee_to_bytes: [u8; 32] = data[40..72].try_into().ok()?;
             Some(Pubkey::from(fee_to_bytes))
         }
@@ -180,6 +193,7 @@ pub async fn handle_slidefun_buy(
     config: &Config,
     rpc_client: Arc<RpcClient>,
     token_mint: &str,
+    token_program_pk: Pubkey,
 ) {
     let user = config.keypair.pubkey();
     let sol_lamports = (config.slidefun_pump_amount * LAMPORTS_PER_SOL as f64) as u64;
@@ -196,12 +210,21 @@ pub async fn handle_slidefun_buy(
     let token_program = Pubkey::from_str(constants::TOKEN_PROGRAM).unwrap();
     let user_payment_ata = get_associated_token_address(&user, &payment_mint);
 
-    // Fetch fee_to from config PDA
-    let fee_to = match fetch_fee_to(&rpc_client).await {
-        Some(pk) => pk,
-        None => {
-            log_info!("[SFSNIPE] Could not get fee_to — aborting buy");
-            return;
+    // Get fee_to from cache or fetch if missing
+    let slidefun_program = config.slidefun_program();
+    let fee_to = {
+        let cached = CACHED_FEE_TO.lock().unwrap().clone();
+        if let Some(pk) = cached {
+            pk
+        } else {
+            // Fallback (should not happen after startup)
+            match fetch_fee_to(&rpc_client, &slidefun_program).await {
+                Some(pk) => pk,
+                None => {
+                    log_info!("[SFSNIPE] Could not get fee_to — aborting buy");
+                    return;
+                }
+            }
         }
     };
 
@@ -223,6 +246,8 @@ pub async fn handle_slidefun_buy(
     // 6. The buy instruction
     // 7. Jito tip
 
+    let actual_token_program = token_program_pk; // Use the program passed from the parser
+
     let jito_tip_address = Pubkey::from_str(crate::constants::jito_tip_address()).unwrap();
 
     let buy_ix = build_slidefun_buy_instruction(
@@ -230,6 +255,8 @@ pub async fn handle_slidefun_buy(
         &token_mint_pk,
         &payment_mint,
         &fee_to,
+        &slidefun_program,
+        &actual_token_program,
         sol_lamports,
         0, // min_token_out = 0 (no slippage protection, max speed)
     );
@@ -237,7 +264,7 @@ pub async fn handle_slidefun_buy(
     let ixs = vec![
         ComputeBudgetInstruction::set_compute_unit_limit(config.cu_limit),
         ComputeBudgetInstruction::set_compute_unit_price(config.priority_fee),
-        // Prepare WSOL
+        // Prepare WSOL (Always standard Token Program for WSOL)
         create_associated_token_account_idempotent(&user, &user, &payment_mint, &token_program),
         system_instruction::transfer(&user, &user_payment_ata, sol_lamports),
         Instruction {
@@ -245,8 +272,8 @@ pub async fn handle_slidefun_buy(
             accounts: vec![AccountMeta::new(user_payment_ata, false)],
             data: vec![17], // SyncNative
         },
-        // Create user token ATA
-        create_associated_token_account_idempotent(&user, &user, &token_mint_pk, &token_program),
+        // Create user token ATA using the ACTUAL program for the mint
+        create_associated_token_account_idempotent(&user, &user, &token_mint_pk, &actual_token_program),
         // BUY!
         buy_ix,
         // Jito tip
@@ -318,9 +345,9 @@ pub async fn handle_slidefun_buy(
 // ==============================================================
 
 /// Check logs for a `create_bonding_curve` event from Slide.fun.
-pub fn is_creation_signal(logs: &[String]) -> bool {
+pub fn is_creation_signal(logs: &[String], program_id_str: &str) -> bool {
     let logs_str = logs.join(" ");
-    logs_str.contains(constants::slidefun_program())
+    logs_str.contains(program_id_str)
         && logs_str.contains("Instruction: CreateBondingCurve")
 }
 
@@ -329,8 +356,9 @@ pub fn is_creation_signal(logs: &[String]) -> bool {
 pub async fn extract_new_token_and_creator(
     rpc_client: &RpcClient,
     signature: &str,
-) -> Option<(String, String)> {
-    let slidefun_program = get_slidefun_program();
+    program_id: &Pubkey,
+) -> Option<(String, String, Pubkey)> {
+    let slidefun_program = *program_id;
     let sig = Signature::from_str(signature).ok()?;
     let config = RpcTransactionConfig {
         encoding: Some(UiTransactionEncoding::Base64),
@@ -380,8 +408,24 @@ pub async fn extract_new_token_and_creator(
                         if ix.accounts.len() > 2 {
                             let token_mint = all_keys[ix.accounts[2] as usize];
                             let creator = all_keys[0]; // Fee payer is the creator
-                            log_info!("[SFSNIPE] ✅ New token detected: {} by creator: {}", token_mint, creator);
-                            return Some((token_mint.to_string(), creator.to_string()));
+                            
+                            // Determine which token program is used by checking instruction accounts
+                            let mut token_program_pk = Pubkey::from_str(constants::TOKEN_PROGRAM).unwrap();
+                            for &acc_idx in &ix.accounts {
+                                let pk = all_keys[acc_idx as usize];
+                                if pk.to_string() == constants::TOKEN_2022_PROGRAM {
+                                    token_program_pk = pk;
+                                    break;
+                                }
+                            }
+
+                            log_info!(
+                                "[SFSNIPE] ✅ New token detected: {} (Program: {}) by creator: {}", 
+                                token_mint, 
+                                if token_program_pk.to_string() == constants::TOKEN_PROGRAM { "Token" } else { "Token-2022" },
+                                creator
+                            );
+                            return Some((token_mint.to_string(), creator.to_string(), token_program_pk));
                         }
                     }
                 }
@@ -397,10 +441,4 @@ pub async fn extract_new_token_and_creator(
     None
 }
 
-/// Fallback compatibility
-pub async fn extract_new_token(
-    rpc_client: &RpcClient,
-    signature: &str,
-) -> Option<String> {
-    extract_new_token_and_creator(rpc_client, signature).await.map(|(mint, _)| mint)
-}
+

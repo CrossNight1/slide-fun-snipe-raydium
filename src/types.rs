@@ -25,9 +25,4 @@ pub struct PoolInfo {
     pub open_time: u64,
 }
 
-/// Information about a graduating token from Slide.fun
-#[derive(Debug, Clone)]
-pub struct GraduatingToken {
-    pub token_mint: String,
-    pub detected_at: std::time::Instant,
-}
+

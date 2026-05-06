@@ -68,12 +68,18 @@ pub async fn run(
     state: &ListenerState,
     bot_active: Arc<AtomicBool>,
 ) {
-    let enable_slidefun_create = matches!(config.snipe_mode.as_str(), "slidefun" | "both");
+    let enable_slidefun_create = matches!(config.snipe_mode.as_str(), "slidefun" | "both" | "listen_creator");
     let enable_raydium_migrate = matches!(config.snipe_mode.as_str(), "raydium" | "both" | "listen_creator");
-    let enable_listen_creator = config.snipe_mode == "listen_creator";
 
-    let slidefun_program = Pubkey::from_str(constants::slidefun_program()).unwrap();
+    let slidefun_program = if let Some(prog) = &config.app.slidefun_program {
+        Pubkey::from_str(prog).unwrap_or_else(|_| Pubkey::from_str(constants::slidefun_program()).unwrap())
+    } else {
+        Pubkey::from_str(constants::slidefun_program()).unwrap()
+    };
     let amm_program = Pubkey::from_str(constants::RAYDIUM_AMM_PROGRAM).unwrap();
+
+    // Cache Slide.fun fee_to at startup
+    crate::slidefun_snipe::pre_fetch_fee_to(&rpc_client, &slidefun_program).await;
 
     log_info!("[WS] Connecting to WebSocket...");
 
@@ -102,11 +108,15 @@ pub async fn run(
                     .unwrap();
 
                 log_info!("[OK] ✅ Dual-listener active:");
-                log_info!("   [A] Slide.fun : {}", constants::slidefun_program());
+                log_info!("   [A] Slide.fun : {}", slidefun_program);
                 log_info!("   [B] Raydium V4: {}", constants::RAYDIUM_AMM_PROGRAM);
                 log_info!(
                     "   [C] Slidefun-create snipe: {}",
                     if enable_slidefun_create { "ACTIVE" } else { "DISABLED" }
+                );
+                log_info!(
+                    "   [D] Listen-creator snipe : {}",
+                    if config.app.listen_creator { "ACTIVE" } else { "DISABLED" }
                 );
                 log_info!("[OK] Waiting for events...\n");
 
@@ -134,8 +144,8 @@ pub async fn run(
                         Some(("slidefun", log)) => {
                             let logs = log.value.logs.clone();
 
-                            // Mode: SLIDEFUN_CREATE or LISTEN_CREATOR
-                            if (enable_slidefun_create || enable_listen_creator) && slidefun_snipe::is_creation_signal(&logs) {
+                            // Mode: SLIDEFUN_CREATE or config.app.listen_creator
+                            if (enable_slidefun_create || config.app.listen_creator) && slidefun_snipe::is_creation_signal(&logs, &slidefun_program.to_string()) {
                                 let signature = log.value.signature.clone();
                                 log_info!("[SFSNIPE] 🆕 New Slide.fun token! TX: {}", signature);
 
@@ -147,23 +157,32 @@ pub async fn run(
                                 let grad_c = state.graduating_tokens.clone();
 
                                 tokio::spawn(async move {
-                                    if let Some((mint, creator)) =
-                                        slidefun_snipe::extract_new_token_and_creator(&rpc_c, &signature).await
+                                    if let Some((mint, creator, token_program)) =
+                                        slidefun_snipe::extract_new_token_and_creator(&rpc_c, &signature, &cfg_c.slidefun_program()).await
                                     {
-                                        if enable_listen_creator {
+                                        let mut should_buy = false;
+
+                                        // 1. Check Creator Tracking
+                                        let is_creator_mode = cfg_c.snipe_mode == "listen_creator";
+                                        if cfg_c.app.listen_creator || is_creator_mode {
                                             if cfg_c.app.target_creators.contains(&creator) {
-                                                log_info!("[LISTEN_CREATOR] 🎯 Tracking token {} from creator {}", mint, creator);
+                                                log_info!("[LISTEN_CREATOR] 🎯 Match! Tracking token {} from creator {}", mint, creator);
                                                 creator_c.lock().await.insert(mint.clone());
-                                                // Also add to graduation watch-list so we can pre-create ATA if needed
                                                 grad_c.lock().await.insert(mint.clone());
-                                            } else {
-                                                log_info!("   [SKIP] Creator {} not in target_creators", creator);
+                                                should_buy = true; 
                                             }
-                                            return; // Stop here, we don't buy immediately
                                         }
 
-                                        if !cfg_c.is_whitelisted(&mint) {
-                                            log_info!("   [SKIP] {} not in target whitelist", mint);
+                                        // 2. Check General Slide.fun Snipe (ONLY if mode is Slidefun/Both)
+                                        if !should_buy && (cfg_c.snipe_mode == "slidefun" || cfg_c.snipe_mode == "both") {
+                                            if cfg_c.is_whitelisted(&mint) {
+                                                log_info!("[SFSNIPE] 🎯 Match! Sniping {}...", mint);
+                                                should_buy = true;
+                                            }
+                                        }
+
+                                        if !should_buy {
+                                            log_info!("   [SKIP] {} does not match target creators or whitelist", mint);
                                             return;
                                         }
 
@@ -179,14 +198,14 @@ pub async fn run(
                                         }
 
                                         slidefun_snipe::handle_slidefun_buy(
-                                            &cfg_c, rpc_c.clone(), &mint,
+                                            &cfg_c, rpc_c.clone(), &mint, token_program,
                                         )
                                         .await;
 
                                         // Bundle buy
                                         if !wallets_c.is_empty() && !cfg_c.dry_run {
                                             if let Some(fee_to) =
-                                                slidefun_snipe::fetch_fee_to(&rpc_c).await
+                                                slidefun_snipe::fetch_fee_to(&rpc_c, &cfg_c.slidefun_program()).await
                                             {
                                                 let bh = get_blockhash();
                                                 bundle_buy::slidefun_bundle_buy(
@@ -204,7 +223,7 @@ pub async fn run(
                             }
 
                             // Mode: RAYDIUM / BOTH — detect graduate migrate step
-                            if enable_raydium_migrate && graduation::is_graduation_signal(&logs) {
+                            if enable_raydium_migrate && graduation::is_graduation_signal(&logs, &slidefun_program.to_string()) {
                                 let signature = log.value.signature.clone();
                                 log_info!(
                                     "[SLIDE-FUN] 🎓 Graduation detected! TX: {}",
@@ -220,7 +239,7 @@ pub async fn run(
                                     let keypair =
                                         Keypair::try_from(keypair_bytes.as_ref()).unwrap();
                                     if let Some(mint) = graduation::extract_graduating_token(
-                                        &rpc_c, &signature, &logs,
+                                        &rpc_c, &signature, &logs, &slidefun_program,
                                     )
                                     .await
                                     {
@@ -271,10 +290,11 @@ pub async fn run(
                                 {
                                     let token_key = pool_info.base_mint.to_string();
 
-                                    let mut is_target = cfg_c.is_whitelisted(&token_key);
-                                    if !is_target && cfg_c.snipe_mode == "listen_creator" {
-                                        is_target = creator_c.lock().await.contains(&token_key);
-                                    }
+                                    let is_target = if cfg_c.snipe_mode == "listen_creator" {
+                                        creator_c.lock().await.contains(&token_key)
+                                    } else {
+                                        cfg_c.is_whitelisted(&token_key)
+                                    };
                                     if !is_target {
                                         log_info!("   [SKIP] {} not in target whitelist or tracked by creator", token_key);
                                         return;

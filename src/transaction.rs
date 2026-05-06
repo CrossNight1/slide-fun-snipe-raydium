@@ -134,41 +134,7 @@ pub async fn send_bundle_to_url(
     }
 }
 
-/// Simulate a bundle against the first available Jito endpoint.
-/// Returns the simulation result JSON for debugging.
-pub async fn simulate_bundle_jito(encoded_txs: &[String]) -> Result<Value, Box<dyn std::error::Error>> {
-    let urls = jito_bundle_urls();
-    for url in &urls {
-        let payload = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "simulateBundle",
-            "params": [
-                { "encodedTransactions": encoded_txs },
-                { "skipSigVerify": true, "replaceRecentBlockhash": true, "commitment": "confirmed" }
-            ]
-        });
 
-        let response = match JITO_HTTP_CLIENT.post(url).json(&payload).send().await {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-
-        let result: Value = match response.json().await {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        if result.get("error").is_some() {
-            let code = result["error"]["code"].as_i64().unwrap_or(0);
-            if code == -32097 { continue; } // rate limited, try next endpoint
-        }
-
-        return Ok(result);
-    }
-
-    Err("All Jito endpoints failed or rate limited for simulateBundle".into())
-}
 
 /// Build Raydium AMM V4 swapBaseIn instruction
 pub fn build_swap_instruction(

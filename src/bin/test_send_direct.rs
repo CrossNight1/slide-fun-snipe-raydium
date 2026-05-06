@@ -31,7 +31,7 @@ async fn main() {
     if wallets.is_empty() { eprintln!("No wallets"); std::process::exit(1); }
 
     let bh = rpc.get_latest_blockhash().await.unwrap();
-    let sol_lamports = (config.bundle_sol_per_wallet * LAMPORTS_PER_SOL as f64) as u64;
+    let sol_lamports = (config.app.bundle_wallets.first().map(|w| w.sol_amount).unwrap_or(0.05) * LAMPORTS_PER_SOL as f64) as u64;
 
     let tx = match bundle_buy::build_raydium_buy_tx_for_wallet(
         &wallets[0], &pool_info, sol_lamports, 0,
@@ -42,7 +42,7 @@ async fn main() {
     };
 
     println!("Sending TX for wallet[0]: {}", wallets[0].pubkey());
-    println!("Amount: {} SOL", config.bundle_sol_per_wallet);
+    println!("Amount: {} SOL", config.app.bundle_wallets.first().map(|w| w.sol_amount).unwrap_or(0.05));
 
     match rpc.send_transaction(&tx).await {
         Ok(sig) => {

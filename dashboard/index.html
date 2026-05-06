@@ -181,6 +181,7 @@
     margin-bottom: 24px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
   }
   .card-title-icon {
@@ -252,7 +253,33 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    font-family: inherit;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px var(--accent-glow); filter: brightness(1.1); }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: #fff; }
+  .btn-outline:hover { background: var(--glass); border-color: var(--muted); }
+  .btn-sm { padding: 8px 16px; font-size: 0.75rem; border-radius: 8px; }
+  .btn-xs { padding: 4px 10px; font-size: 0.65rem; border-radius: 6px; }
+  .btn-save-mini {
+    background: var(--accent);
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: 0.2s;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-save-mini:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px var(--accent-glow);
   }
   .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 4px 12px var(--accent-glow); }
   .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px var(--accent-glow); }
@@ -260,7 +287,6 @@
   .btn-danger:hover { background: var(--red); color: #fff; }
   .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
   .btn-outline:hover { background: var(--glass); }
-  .btn-sm { padding: 6px 12px; font-size: 0.75rem; border-radius: 8px; }
 
   /* ── Log Terminal (Persistent) ── */
   .persistent-logs {
@@ -405,7 +431,12 @@
           <div class="grid">
             <!-- Core Settings -->
             <div class="card">
-              <div class="card-title"><div class="card-title-icon">⚙️</div> Core Settings</div>
+              <div class="card-title">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="card-title-icon">⚙️</div> Core Settings
+                </div>
+                <button class="btn-save-mini" onclick="saveConfig()">Save</button>
+              </div>
               <div class="field" style="margin-bottom: 20px;">
                 <label>Helius API Key</label>
                 <input id="helius_api_key" type="password" placeholder="Enter API Key..."/>
@@ -416,6 +447,10 @@
                   <option value="mainnet">Mainnet Beta</option>
                   <option value="devnet">Devnet</option>
                 </select>
+              </div>
+              <div class="field" style="margin-bottom: 20px;">
+                <label>Slide.fun Program ID</label>
+                <input id="slidefun_program" type="text" placeholder="Enter Program ID..."/>
               </div>
               <div class="form-row">
                 <div class="field">
@@ -437,14 +472,17 @@
                   <input id="slidefun_pump_amount" type="number" step="0.01" min="0"/>
                 </div>
               </div>
-              <div class="btn-row" style="margin-top: 12px;">
-                <button class="btn btn-primary" style="width: 100%" onclick="saveConfig()">💾 Save All Settings</button>
-              </div>
+
             </div>
 
             <!-- Modes & Flags -->
             <div class="card">
-              <div class="card-title"><div class="card-title-icon">🎯</div> Snipe Modes</div>
+              <div class="card-title">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="card-title-icon">🎯</div> Snipe Modes
+                </div>
+                <button class="btn-save-mini" onclick="saveConfig()">Save</button>
+              </div>
               <div class="mode-grid" id="snipe_mode_btns">
                 <div class="mode-option" data-mode="raydium">Raydium</div>
                 <div class="mode-option" data-mode="slidefun">Slide.fun</div>
@@ -475,22 +513,35 @@
                 </div>
                 <label class="switch"><input type="checkbox" id="test_mode"/><span class="slider"></span></label>
               </div>
+
             </div>
 
             <!-- Whitelist -->
             <div class="card" style="grid-column: span 1;">
-              <div class="card-title"><div class="card-title-icon">📝</div> Target Whitelist</div>
+              <div class="card-title">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="card-title-icon">📝</div> Target Whitelist
+                </div>
+                <button class="btn-save-mini" onclick="saveConfig()">Save</button>
+              </div>
               <p style="font-size: 0.75rem; color: var(--muted); margin-bottom: 16px;">The bot will only trade these tokens if Auto Snipe All is OFF.</p>
               <div id="mints-container" class="mint-list"></div>
               <button class="btn btn-outline btn-sm" onclick="addMint()" style="margin-top: 16px; width: 100%">+ Add New Target Mint</button>
+
             </div>
 
             <!-- Target Creators -->
             <div class="card" style="grid-column: span 1;">
-              <div class="card-title"><div class="card-title-icon">👤</div> Target Creators</div>
+              <div class="card-title">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="card-title-icon">👤</div> Target Creators
+                </div>
+                <button class="btn-save-mini" onclick="saveConfig()">Save</button>
+              </div>
               <p style="font-size: 0.75rem; color: var(--muted); margin-bottom: 16px;">Only used in Listen Creator mode to track tokens by creator.</p>
               <div id="creators-container" class="mint-list"></div>
               <button class="btn btn-outline btn-sm" onclick="addCreator()" style="margin-top: 16px; width: 100%">+ Add New Creator</button>
+
             </div>
 
             <!-- Manual Actions -->
@@ -528,8 +579,13 @@
           <div class="grid">
             <div class="card" style="grid-column: span 2;">
               <div class="card-title">
-                <div class="card-title-icon">🔑</div> Main Sniping Wallet 
-                <span id="main_pubkey_display" style="font-size: 0.7rem; font-family: monospace; color: var(--accent2); margin-left: auto;"></span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="card-title-icon">🔑</div> Main Sniping Wallet 
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <span id="main_pubkey_display" style="font-size: 0.7rem; font-family: monospace; color: var(--accent2);"></span>
+                  <button class="btn-save-mini" onclick="saveConfig()">Save</button>
+                </div>
               </div>
               <div class="form-row">
                 <div class="field">
@@ -552,12 +608,15 @@
             </div>
 
             <div class="card" style="grid-column: span 2;">
-              <div class="card-title"><div class="card-title-icon">📦</div> Sub-Wallet Bundles <span class="badge badge-purple" id="bundle-count" style="margin-left: 10px;">0</span></div>
+              <div class="card-title">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="card-title-icon">📦</div> Sub-Wallet Bundles <span class="badge badge-purple" id="bundle-count" style="margin-left: 10px;">0</span>
+                </div>
+                <button class="btn-save-mini" onclick="saveConfig()">Save</button>
+              </div>
               <div id="wallet-list-container"></div>
               <button class="btn btn-outline" onclick="addWallet()" style="width: 100%; margin-top: 10px;">+ Create New Sub-Wallet Entry</button>
-              <div class="btn-row" style="margin-top: 24px;">
-                <button class="btn btn-primary" style="width: 100%" onclick="saveConfig()">💾 Save Wallet Configurations</button>
-              </div>
+
             </div>
           </div>
         </div>
@@ -663,6 +722,7 @@
         document.getElementById('cu_limit').value = cfg.cu_limit ?? 200000;
         document.getElementById('priority_fee').value = cfg.priority_fee ?? 100000;
         document.getElementById('slidefun_pump_amount').value = cfg.slidefun_pump_amount ?? 0.05;
+        document.getElementById('slidefun_program').value = cfg.slidefun_program || '';
         document.getElementById('auto_snipe_all').checked = cfg.auto_snipe_all ?? false;
         document.getElementById('dry_run').checked = cfg.dry_run ?? true;
         document.getElementById('test_mode').checked = cfg.test_mode ?? false;
@@ -702,6 +762,7 @@
         cu_limit: parseInt(document.getElementById('cu_limit').value),
         priority_fee: parseInt(document.getElementById('priority_fee').value),
         slidefun_pump_amount: parseFloat(document.getElementById('slidefun_pump_amount').value),
+        slidefun_program: document.getElementById('slidefun_program').value,
         auto_snipe_all: document.getElementById('auto_snipe_all').checked,
         dry_run: document.getElementById('dry_run').checked,
         test_mode: document.getElementById('test_mode').checked,

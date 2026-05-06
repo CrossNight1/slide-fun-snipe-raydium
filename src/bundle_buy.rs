@@ -163,6 +163,7 @@ pub fn build_slidefun_buy_tx_for_wallet(
     keypair: &Keypair,
     token_mint: &Pubkey,
     fee_to: &Pubkey,
+    program_id: &Pubkey,
     sol_lamports: u64,
     cu_limit: u32,
     priority_fee: u64,
@@ -180,6 +181,7 @@ pub fn build_slidefun_buy_tx_for_wallet(
         token_mint,
         &wsol_mint,
         fee_to,
+        program_id,
         sol_lamports,
         0, // no min tokens out (max speed)
     );
@@ -755,8 +757,9 @@ pub async fn slidefun_bundle_buy(
         for &wi in &pending {
             let (keypair, sol_amount) = &wallets[wi];
             let sol_lamports = (*sol_amount * LAMPORTS_PER_SOL as f64) as u64;
+            let slidefun_program = config.slidefun_program();
             match build_slidefun_buy_tx_for_wallet(
-                keypair, &token_mint_pk, fee_to, sol_lamports,
+                keypair, &token_mint_pk, fee_to, &slidefun_program, sol_lamports,
                 config.cu_limit, config.priority_fee, current_bh,
             ) {
                 Some(tx) => {
