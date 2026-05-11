@@ -438,19 +438,6 @@ pub async fn raydium_bundle_buy(
     let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
     let rpc = Arc::new(RpcClient::new(rpc_url));
 
-    // Capture pre-buy balances for all wallets (used to detect confirmed buys)
-    let wallet_pubkeys: Vec<Pubkey> = wallets.iter().map(|(kp, _)| kp.pubkey()).collect();
-    let mut pre_balances: Vec<u64> = Vec::with_capacity(wallets.len());
-    {
-        let futs: Vec<_> = wallet_pubkeys.iter().map(|pk| rpc.get_balance(pk)).collect();
-        let results = futures::future::join_all(futs).await;
-        for (i, res) in results.into_iter().enumerate() {
-            let bal = res.unwrap_or(0);
-            pre_balances.push(bal);
-            log_info!("[BUNDLE]   Wallet[{}] pre-balance: {:.6} SOL", i, bal as f64 / 1e9);
-        }
-    }
-
     // Track which wallets have confirmed their buy
     let mut wallet_bought: Vec<bool> = vec![false; wallets.len()];
 
@@ -511,17 +498,17 @@ pub async fn raydium_bundle_buy(
             log_info!("[BUNDLE] Waiting {}s for transactions to land...", CONFIRM_WAIT_SECS);
             tokio::time::sleep(tokio::time::Duration::from_secs(CONFIRM_WAIT_SECS)).await;
             
-            let futs: Vec<_> = wallet_pubkeys.iter().map(|pk| rpc.get_balance(pk)).collect();
-            let results = futures::future::join_all(futs).await;
-            for (idx, res) in results.into_iter().enumerate() {
-                let wi = pending[idx];
-                let cur_bal = res.unwrap_or(pre_balances[wi]);
-                let spent = pre_balances[wi].saturating_sub(cur_bal);
-                let sol_lamports = (wallets[wi].1 * LAMPORTS_PER_SOL as f64) as u64;
-                let bought_threshold = sol_lamports / 2;
-                if spent >= bought_threshold {
-                    wallet_bought[wi] = true;
-                    log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (spent {} lamports)", wi, spent);
+            // Confirm via signatures
+            for (idx, tx) in buy_txs.iter().enumerate() {
+                if let Some(sig) = tx.signatures.first() {
+                    let wi = pending[idx];
+                    match rpc.get_signature_status(sig).await {
+                        Ok(Some(Ok(()))) => {
+                            wallet_bought[wi] = true;
+                            log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (sig: {})", wi, sig_short(sig));
+                        }
+                        _ => {}
+                    }
                 }
             }
             continue; 
@@ -553,24 +540,17 @@ pub async fn raydium_bundle_buy(
         )
         .await;
 
-        // Update bought status based on current balances
-        let pending_pks: Vec<Pubkey> = pending.iter().map(|&wi| wallet_pubkeys[wi]).collect();
-        let futs: Vec<_> = pending_pks.iter().map(|pk| rpc.get_balance(pk)).collect();
-        let results = futures::future::join_all(futs).await;
-        for (idx, res) in results.into_iter().enumerate() {
-            let wi = pending[idx];
-            let cur_bal = res.unwrap_or(pre_balances[wi]);
-            let spent = pre_balances[wi].saturating_sub(cur_bal);
-            
-            let sol_lamports = (wallets[wi].1 * LAMPORTS_PER_SOL as f64) as u64;
-            let bought_threshold = sol_lamports / 2;
-            
-            if spent >= bought_threshold {
-                wallet_bought[wi] = true;
-                log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (spent {} lamports)", wi, spent);
-            } else if !wallet_bought[wi] {
-                log_info!("[BUNDLE] ⏳ Wallet[{}] not confirmed yet (spent {} lamports, need ≥{})",
-                    wi, spent, bought_threshold);
+        // Update bought status based on signature status
+        for (idx, tx) in buy_txs.iter().enumerate() {
+            if let Some(sig) = tx.signatures.first() {
+                let wi = pending[idx];
+                match rpc.get_signature_status(sig).await {
+                    Ok(Some(Ok(()))) => {
+                        wallet_bought[wi] = true;
+                        log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (sig: {})", wi, sig_short(sig));
+                    }
+                    _ => {}
+                }
             }
         }
 
@@ -753,18 +733,6 @@ pub async fn slidefun_bundle_buy(
     let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
     let rpc = Arc::new(RpcClient::new(rpc_url));
 
-    // Capture pre-buy balances
-    let sf_wallet_pubkeys: Vec<Pubkey> = wallets.iter().map(|(kp, _)| kp.pubkey()).collect();
-    let mut pre_balances: Vec<u64> = Vec::with_capacity(wallets.len());
-    {
-        let futs: Vec<_> = sf_wallet_pubkeys.iter().map(|pk| rpc.get_balance(pk)).collect();
-        for (i, res) in futures::future::join_all(futs).await.into_iter().enumerate() {
-            let bal = res.unwrap_or(0);
-            pre_balances.push(bal);
-            log_info!("[BUNDLE]   Wallet[{}] pre-balance: {:.6} SOL", i, bal as f64 / 1e9);
-        }
-    }
-
     let mut wallet_bought: Vec<bool> = vec![false; wallets.len()];
     let mut current_bh = blockhash;
 
@@ -818,17 +786,16 @@ pub async fn slidefun_bundle_buy(
             log_info!("[BUNDLE] Waiting {}s for transactions to land...", CONFIRM_WAIT_SECS);
             tokio::time::sleep(tokio::time::Duration::from_secs(CONFIRM_WAIT_SECS)).await;
             
-            let futs: Vec<_> = sf_wallet_pubkeys.iter().map(|pk| rpc.get_balance(pk)).collect();
-            let results = futures::future::join_all(futs).await;
-            for (idx, res) in results.into_iter().enumerate() {
-                let wi = pending[idx];
-                let cur_bal = res.unwrap_or(pre_balances[wi]);
-                let spent = pre_balances[wi].saturating_sub(cur_bal);
-                let sol_lamports = (wallets[wi].1 * LAMPORTS_PER_SOL as f64) as u64;
-                let bought_threshold = sol_lamports / 2;
-                if spent >= bought_threshold {
-                    wallet_bought[wi] = true;
-                    log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (spent {} lamports)", wi, spent);
+            for (idx, tx) in buy_txs.iter().enumerate() {
+                if let Some(sig) = tx.signatures.first() {
+                    let wi = pending[idx];
+                    match rpc.get_signature_status(sig).await {
+                        Ok(Some(Ok(()))) => {
+                            wallet_bought[wi] = true;
+                            log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (sig: {})", wi, sig_short(sig));
+                        }
+                        _ => {}
+                    }
                 }
             }
             continue;
@@ -859,21 +826,17 @@ pub async fn slidefun_bundle_buy(
         )
         .await;
 
-        let sf_pending_pks: Vec<Pubkey> = pending.iter().map(|&wi| sf_wallet_pubkeys[wi]).collect();
-        let futs: Vec<_> = sf_pending_pks.iter().map(|pk| rpc.get_balance(pk)).collect();
-        for (idx, res) in futures::future::join_all(futs).await.into_iter().enumerate() {
-            let wi = pending[idx];
-            let cur_bal = res.unwrap_or(pre_balances[wi]);
-            let spent = pre_balances[wi].saturating_sub(cur_bal);
-            
-            let sol_lamports = (wallets[wi].1 * LAMPORTS_PER_SOL as f64) as u64;
-            let bought_threshold = sol_lamports / 2;
-            
-            if spent >= bought_threshold {
-                wallet_bought[wi] = true;
-                log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (spent {} lamports)", wi, spent);
-            } else if !wallet_bought[wi] {
-                log_info!("[BUNDLE] ⏳ Wallet[{}] not confirmed yet (spent {} lamports, need ≥{})", wi, spent, bought_threshold);
+        // Update status via signatures
+        for (idx, tx) in buy_txs.iter().enumerate() {
+            if let Some(sig) = tx.signatures.first() {
+                let wi = pending[idx];
+                match rpc.get_signature_status(sig).await {
+                    Ok(Some(Ok(()))) => {
+                        wallet_bought[wi] = true;
+                        log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (sig: {})", wi, sig_short(sig));
+                    }
+                    _ => {}
+                }
             }
         }
 
@@ -1010,4 +973,35 @@ pub async fn slidefun_bundle_sell(
     log_info!("[BUNDLE] Firing {} sell bundle(s)...", bundles.len());
     fire_bundles(bundles).await;
     log_info!("[BUNDLE] ✅ Sell bundles fired.");
+}
+
+/// Check balances of all enabled sub-wallets at startup.
+pub async fn check_sub_wallet_balances(config: &Config, wallets: &[(Keypair, f64)]) {
+    if wallets.is_empty() { return; }
+    
+    let base_url = if config.network.to_lowercase() == "devnet" {
+        "devnet.helius-rpc.com"
+    } else {
+        "mainnet.helius-rpc.com"
+    };
+    let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
+    let rpc = RpcClient::new(rpc_url);
+    
+    log_info!("[BUNDLE] Checking sub-wallet balances...");
+    let pks: Vec<Pubkey> = wallets.iter().map(|(kp, _)| kp.pubkey()).collect();
+    let futs: Vec<_> = pks.iter().map(|pk| rpc.get_balance(pk)).collect();
+    let results = futures::future::join_all(futs).await;
+    
+    for (i, res) in results.into_iter().enumerate() {
+        let pk = wallets[i].0.pubkey();
+        match res {
+            Ok(bal) => {
+                log_info!("[BUNDLE]   Wallet[{}] {}: {:.4} SOL", i, pk, bal as f64 / 1e9);
+                if bal < 10_000_000 {
+                    log_info!("[WARN]   Wallet[{}] is nearly empty!", i);
+                }
+            }
+            Err(e) => log_info!("[BUNDLE]   Wallet[{}] {}: Failed to fetch balance: {}", i, pk, e),
+        }
+    }
 }

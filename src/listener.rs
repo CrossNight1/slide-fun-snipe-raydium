@@ -225,33 +225,40 @@ pub async fn run(
                                             s.insert(key);
                                         }
 
-                                        slidefun_snipe::handle_slidefun_buy(
-                                            &cfg_c,
-                                            rpc_c.clone(),
-                                            &mint,
-                                            token_program,
-                                        )
-                                        .await;
+                                        // Main buy
+                                        let rpc_m = rpc_c.clone();
+                                        let cfg_m = cfg_c.clone();
+                                        let mint_m = mint.clone();
+                                        tokio::spawn(async move {
+                                            slidefun_snipe::handle_slidefun_buy(
+                                                &cfg_m,
+                                                rpc_m,
+                                                &mint_m,
+                                                token_program,
+                                            )
+                                            .await;
+                                        });
 
                                         // Bundle buy
                                         if !wallets_c.is_empty() && !cfg_c.dry_run {
-                                            if let Some(fee_to) = slidefun_snipe::fetch_fee_to(
-                                                &rpc_c,
-                                                &cfg_c.slidefun_program(),
-                                            )
-                                            .await
-                                            {
-                                                let bh = get_blockhash();
-                                                bundle_buy::slidefun_bundle_buy(
-                                                    &cfg_c,
-                                                    &wallets_c,
-                                                    &mint,
-                                                    token_program,
-                                                    &fee_to,
-                                                    bh,
-                                                )
-                                                .await;
-                                            }
+                                            let cfg_b = cfg_c.clone();
+                                            let mint_b = mint.clone();
+                                            let wallets_b = wallets_c.clone();
+                                            tokio::spawn(async move {
+                                                // Use cached fee_to to avoid 600ms RPC delay
+                                                if let Some(fee_to) = slidefun_snipe::get_cached_fee_to() {
+                                                    let bh = get_blockhash();
+                                                    bundle_buy::slidefun_bundle_buy(
+                                                        &cfg_b,
+                                                        &wallets_b,
+                                                        &mint_b,
+                                                        token_program,
+                                                        &fee_to,
+                                                        bh,
+                                                    )
+                                                    .await;
+                                                }
+                                            });
                                         }
                                     }
                                 });
@@ -352,22 +359,31 @@ pub async fn run(
                                     );
 
                                         // Main wallet buy
-                                        handle_buy(
-                                            &cfg_c,
-                                            rpc_c.clone(),
-                                            pool_info.clone(),
-                                            ata_pre,
-                                        )
-                                        .await;
+                                        let cfg_m = cfg_c.clone();
+                                        let rpc_m = rpc_c.clone();
+                                        let pool_m = pool_info.clone();
+                                        tokio::spawn(async move {
+                                            handle_buy(
+                                                &cfg_m,
+                                                rpc_m,
+                                                pool_m,
+                                                ata_pre,
+                                            )
+                                            .await;
+                                        });
 
                                         // Bundle buy (sub-wallets)
                                         if !wallets_c.is_empty() && !cfg_c.dry_run {
-                                            let bh = get_blockhash();
-                                            let pool_arc = Arc::new(pool_info);
-                                            bundle_buy::raydium_bundle_buy(
-                                                &cfg_c, &wallets_c, pool_arc, bh,
-                                            )
-                                            .await;
+                                            let cfg_b = cfg_c.clone();
+                                            let wallets_b = wallets_c.clone();
+                                            tokio::spawn(async move {
+                                                let bh = get_blockhash();
+                                                let pool_arc = Arc::new(pool_info);
+                                                bundle_buy::raydium_bundle_buy(
+                                                    &cfg_b, &wallets_b, pool_arc, bh,
+                                                )
+                                                .await;
+                                            });
                                         }
                                     } // end Some(pool_info)
                                     None => {

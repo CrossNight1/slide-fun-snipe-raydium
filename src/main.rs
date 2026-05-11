@@ -39,6 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "   [BUNDLE] {} enabled sub-wallet(s) loaded",
             bundle_wallets.len()
         );
+        // Initial balance check at startup (removes latency from the snipe path)
+        bundle_buy::check_sub_wallet_balances(&config, &bundle_wallets).await;
     }
 
     let bot_active = Arc::new(AtomicBool::new(true)); // Start active by default

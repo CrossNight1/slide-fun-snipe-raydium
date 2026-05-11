@@ -226,6 +226,12 @@ pub async fn pre_fetch_fee_to(rpc_client: &RpcClient, program_id: &Pubkey) {
     }
 }
 
+/// Get the cached fee_to address instantly.
+pub fn get_cached_fee_to() -> Option<Pubkey> {
+    let cache = CACHED_FEE_TO.lock().unwrap();
+    *cache
+}
+
 /// Fetch the `fee_to` pubkey from the Slide.fun Config PDA account.
 pub async fn fetch_fee_to(rpc_client: &RpcClient, program_id: &Pubkey) -> Option<Pubkey> {
     let config_pda = derive_config_pda(program_id);
