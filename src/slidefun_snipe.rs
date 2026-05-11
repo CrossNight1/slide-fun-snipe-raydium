@@ -30,9 +30,9 @@
 //     [12] token_program
 //   Args: amount (u64), is_exact_in (bool), input_number (u64)
 
-use crate::{constants, log_info};
 use crate::config::Config;
 use crate::transaction::send_via_jito;
+use crate::{constants, log_info};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcSendTransactionConfig, RpcTransactionConfig};
 use solana_sdk::{
@@ -42,15 +42,13 @@ use solana_sdk::{
     message::{v0::Message, VersionedMessage},
     native_token::LAMPORTS_PER_SOL,
     pubkey::Pubkey,
-    signature::Signature,
-    signer::Signer,
+    signature::{Signature, Signer},
     system_instruction,
     transaction::VersionedTransaction,
 };
 use solana_transaction_status_client_types::UiTransactionEncoding;
 use spl_associated_token_account::{
-    get_associated_token_address,
-    instruction::create_associated_token_account_idempotent,
+    get_associated_token_address, instruction::create_associated_token_account_idempotent,
 };
 use std::str::FromStr;
 use std::sync::Arc;
@@ -60,14 +58,9 @@ use tokio::time::{sleep, Duration};
 // PDA derivation helpers
 // ==============================================================
 
-
-
 /// Derive config PDA: seeds = [b"config"]
 pub fn derive_config_pda(program_id: &Pubkey) -> Pubkey {
-    let (pda, _) = Pubkey::find_program_address(
-        &[constants::SLIDEFUN_CONFIG_SEED],
-        program_id,
-    );
+    let (pda, _) = Pubkey::find_program_address(&[constants::SLIDEFUN_CONFIG_SEED], program_id);
     pda
 }
 
@@ -90,10 +83,10 @@ pub fn derive_bonding_curve_pda(token_mint: &Pubkey, program_id: &Pubkey) -> Pub
 pub fn build_slidefun_buy_instruction(
     user: &Pubkey,
     token_mint: &Pubkey,
-    payment_mint: &Pubkey,   // usually WSOL / So1111...
-    fee_to: &Pubkey,         // from config account on-chain, fetched separately
+    payment_mint: &Pubkey, // usually WSOL / So1111...
+    fee_to: &Pubkey,       // from config account on-chain, fetched separately
     program_id: &Pubkey,
-    token_program: &Pubkey,  // Token or Token-2022
+    token_program: &Pubkey, // Token or Token-2022
     sol_amount_lamports: u64,
     min_token_out: u64,
 ) -> Instruction {
@@ -107,26 +100,35 @@ pub fn build_slidefun_buy_instruction(
 
     // ATAs
     // Use spl_associated_token_account::get_associated_token_address_with_program_id to support Token-2022
-    let bonding_curve_token_ata = spl_associated_token_account::get_associated_token_address_with_program_id(&bonding_curve_pda, token_mint, token_program);
+    let bonding_curve_token_ata =
+        spl_associated_token_account::get_associated_token_address_with_program_id(
+            &bonding_curve_pda,
+            token_mint,
+            token_program,
+        );
     let bonding_curve_payment_ata = get_associated_token_address(&bonding_curve_pda, payment_mint); // WSOL is always standard Token
-    let user_token_ata = spl_associated_token_account::get_associated_token_address_with_program_id(user, token_mint, token_program);
+    let user_token_ata = spl_associated_token_account::get_associated_token_address_with_program_id(
+        user,
+        token_mint,
+        token_program,
+    );
     let user_payment_ata = get_associated_token_address(user, payment_mint);
     let fee_to_payment_ata = get_associated_token_address(fee_to, payment_mint);
 
     let accounts = vec![
-        AccountMeta::new(*user, true),                   // [0] user
-        AccountMeta::new_readonly(config_pda, false),    // [1] config
-        AccountMeta::new(bonding_curve_pda, false),      // [2] bonding_curve
-        AccountMeta::new_readonly(*token_mint, false),   // [3] token
-        AccountMeta::new_readonly(*payment_mint, false), // [4] payment
-        AccountMeta::new(bonding_curve_token_ata, false),// [5] bonding_curve_token_ata
-        AccountMeta::new(bonding_curve_payment_ata, false), // [6] bonding_curve_payment_ata
-        AccountMeta::new(user_token_ata, false),         // [7] user_token_ata
-        AccountMeta::new(user_payment_ata, false),       // [8] user_payment_ata
-        AccountMeta::new(fee_to_payment_ata, false),     // [9] fee_to_payment_ata
+        AccountMeta::new(*user, true),                         // [0] user
+        AccountMeta::new_readonly(config_pda, false),          // [1] config
+        AccountMeta::new(bonding_curve_pda, false),            // [2] bonding_curve
+        AccountMeta::new_readonly(*token_mint, false),         // [3] token (mint)
+        AccountMeta::new_readonly(*payment_mint, false),       // [4] payment (WSOL)
+        AccountMeta::new(bonding_curve_token_ata, false),      // [5] bonding_curve_token_ata
+        AccountMeta::new(bonding_curve_payment_ata, false),    // [6] bonding_curve_payment_ata
+        AccountMeta::new(user_token_ata, false),               // [7] user_token_ata
+        AccountMeta::new(user_payment_ata, false),             // [8] user_payment_ata
+        AccountMeta::new(fee_to_payment_ata, false),           // [9] fee_to_payment_ata
         AccountMeta::new_readonly(assoc_token_program, false), // [10] associated_token_program
-        AccountMeta::new_readonly(system_program, false),// [11] system_program
-        AccountMeta::new_readonly(*token_program, false), // [12] token_program
+        AccountMeta::new_readonly(system_program, false),      // [11] system_program
+        AccountMeta::new_readonly(*token_program, false),      // [12] token_program
     ];
 
     // Instruction data: 8-byte discriminator + amount (u64) + is_exact_in (bool=true) + input_number (u64=0)
@@ -134,6 +136,67 @@ pub fn build_slidefun_buy_instruction(
     data.extend_from_slice(&sol_amount_lamports.to_le_bytes()); // amount
     data.push(1u8); // is_exact_in = true (we specify exact SOL in, get min tokens out)
     data.extend_from_slice(&min_token_out.to_le_bytes()); // input_number (min tokens out)
+
+    Instruction {
+        program_id: *slidefun_program,
+        accounts,
+        data,
+    }
+}
+
+pub fn build_slidefun_sell_instruction(
+    user: &Pubkey,
+    token_mint: &Pubkey,
+    payment_mint: &Pubkey,
+    fee_to: &Pubkey,
+    program_id: &Pubkey,
+    token_program: &Pubkey,
+    token_amount: u64,
+    min_sol_out: u64,
+) -> Instruction {
+    let slidefun_program = program_id;
+    let assoc_token_program =
+        Pubkey::from_str("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL").unwrap();
+    let system_program = solana_sdk::system_program::ID;
+
+    let config_pda = derive_config_pda(slidefun_program);
+    let bonding_curve_pda = derive_bonding_curve_pda(token_mint, slidefun_program);
+
+    let bonding_curve_token_ata =
+        spl_associated_token_account::get_associated_token_address_with_program_id(
+            &bonding_curve_pda,
+            token_mint,
+            token_program,
+        );
+    let bonding_curve_payment_ata = get_associated_token_address(&bonding_curve_pda, payment_mint);
+    let user_token_ata = spl_associated_token_account::get_associated_token_address_with_program_id(
+        user,
+        token_mint,
+        token_program,
+    );
+    let user_payment_ata = get_associated_token_address(user, payment_mint);
+    let fee_to_payment_ata = get_associated_token_address(fee_to, payment_mint);
+
+    let accounts = vec![
+        AccountMeta::new(*user, true),
+        AccountMeta::new_readonly(config_pda, false),
+        AccountMeta::new(bonding_curve_pda, false),
+        AccountMeta::new_readonly(*token_mint, false),
+        AccountMeta::new_readonly(*payment_mint, false),
+        AccountMeta::new(bonding_curve_token_ata, false),
+        AccountMeta::new(bonding_curve_payment_ata, false),
+        AccountMeta::new(user_token_ata, false),
+        AccountMeta::new(user_payment_ata, false),
+        AccountMeta::new(fee_to_payment_ata, false),
+        AccountMeta::new_readonly(assoc_token_program, false),
+        AccountMeta::new_readonly(system_program, false),
+        AccountMeta::new_readonly(*token_program, false),
+    ];
+
+    let mut data = constants::SLIDEFUN_SELL_DISCRIMINATOR.to_vec();
+    data.extend_from_slice(&token_amount.to_le_bytes());
+    data.push(1u8); // is_exact_in = true
+    data.extend_from_slice(&min_sol_out.to_le_bytes());
 
     Instruction {
         program_id: *slidefun_program,
@@ -169,11 +232,11 @@ pub async fn fetch_fee_to(rpc_client: &RpcClient, program_id: &Pubkey) -> Option
     match rpc_client.get_account(&config_pda).await {
         Ok(account) => {
             let data = &account.data;
-            if data.len() < 72 {
+            if data.len() < 112 {
                 log_info!("[SFSNIPE] Config account too short: {} bytes", data.len());
                 return None;
             }
-            let fee_to_bytes: [u8; 32] = data[40..72].try_into().ok()?;
+            let fee_to_bytes: [u8; 32] = data[80..112].try_into().ok()?;
             Some(Pubkey::from(fee_to_bytes))
         }
         Err(e) => {
@@ -200,11 +263,18 @@ pub async fn handle_slidefun_buy(
     let jito_lamports = (config.jito_tip * LAMPORTS_PER_SOL as f64) as u64;
 
     log_info!("[SFSNIPE] >> Slide.fun BUY token: {}", token_mint);
-    log_info!("[SFSNIPE]    SOL amount: {} SOL ({} lamports)", config.slidefun_pump_amount, sol_lamports);
+    log_info!(
+        "[SFSNIPE]    SOL amount: {} SOL ({} lamports)",
+        config.slidefun_pump_amount,
+        sol_lamports
+    );
 
     let token_mint_pk = match Pubkey::from_str(token_mint) {
         Ok(pk) => pk,
-        Err(e) => { log_info!("[SFSNIPE] Invalid token mint: {}", e); return; }
+        Err(e) => {
+            log_info!("[SFSNIPE] Invalid token mint: {}", e);
+            return;
+        }
     };
     let payment_mint = Pubkey::from_str(constants::WSOL_MINT).unwrap();
     let token_program = Pubkey::from_str(constants::TOKEN_PROGRAM).unwrap();
@@ -230,7 +300,11 @@ pub async fn handle_slidefun_buy(
 
     if config.dry_run {
         log_info!("[SFSNIPE] DRY RUN — not sending transaction");
-        log_info!("[SFSNIPE]    Would buy {} SOL of {}", config.slidefun_pump_amount, token_mint);
+        log_info!(
+            "[SFSNIPE]    Would buy {} SOL of {}",
+            config.slidefun_pump_amount,
+            token_mint
+        );
         log_info!("[SFSNIPE]    fee_to: {}", fee_to);
         return;
     }
@@ -273,7 +347,12 @@ pub async fn handle_slidefun_buy(
             data: vec![17], // SyncNative
         },
         // Create user token ATA using the ACTUAL program for the mint
-        create_associated_token_account_idempotent(&user, &user, &token_mint_pk, &actual_token_program),
+        create_associated_token_account_idempotent(
+            &user,
+            &user,
+            &token_mint_pk,
+            &actual_token_program,
+        ),
         // BUY!
         buy_ix,
         // Jito tip
@@ -282,16 +361,25 @@ pub async fn handle_slidefun_buy(
 
     let msg = match Message::try_compile(&user, &ixs, &[], blockhash) {
         Ok(m) => m,
-        Err(e) => { log_info!("[SFSNIPE] Message compile error: {}", e); return; }
+        Err(e) => {
+            log_info!("[SFSNIPE] Message compile error: {}", e);
+            return;
+        }
     };
 
     let tx = match VersionedTransaction::try_new(VersionedMessage::V0(msg), &[&config.keypair]) {
         Ok(t) => t,
-        Err(e) => { log_info!("[SFSNIPE] Sign error: {}", e); return; }
+        Err(e) => {
+            log_info!("[SFSNIPE] Sign error: {}", e);
+            return;
+        }
     };
 
     let serialized = bincode::serialize(&tx).unwrap_or_default();
-    log_info!("[SFSNIPE] TX size: {} bytes (limit: 1232)", serialized.len());
+    log_info!(
+        "[SFSNIPE] TX size: {} bytes (limit: 1232)",
+        serialized.len()
+    );
     if serialized.len() > 1232 {
         log_info!("[SFSNIPE] ERROR: TX too large! Aborting.");
         return;
@@ -299,9 +387,12 @@ pub async fn handle_slidefun_buy(
 
     let encoded = bs58::encode(&serialized).into_string();
 
-    log_info!("[SFSNIPE] 🚀 Firing Slide.fun buy ({} SOL)...", config.slidefun_pump_amount);
+    log_info!(
+        "[SFSNIPE] 🚀 Firing Slide.fun buy ({} SOL)...",
+        config.slidefun_pump_amount
+    );
 
-    // Spam via Jito
+    // Spam via RPC, but only send via Jito ONCE
     let spam_count = 4;
     for attempt in 1..=spam_count {
         let rpc_clone = rpc_client.clone();
@@ -310,11 +401,14 @@ pub async fn handle_slidefun_buy(
         tokio::spawn(async move {
             // Send via RPC
             let config_rpc = RpcSendTransactionConfig {
-                skip_preflight: attempt > 1,
+                skip_preflight: true, // Always skip preflight because the node might be behind the WS state
                 max_retries: Some(0),
                 ..Default::default()
             };
-            match rpc_clone.send_transaction_with_config(&tx_clone, config_rpc).await {
+            match rpc_clone
+                .send_transaction_with_config(&tx_clone, config_rpc)
+                .await
+            {
                 Ok(sig) => log_info!("[SFSNIPE] RPC attempt {} OK: {}", attempt, sig),
                 Err(e) => {
                     if attempt == 1 {
@@ -324,13 +418,15 @@ pub async fn handle_slidefun_buy(
             }
         });
 
-        // Send via Jito bundle
-        let encoded_clone2 = encoded.clone();
-        tokio::spawn(async move {
-            if let Err(e) = send_via_jito(&[encoded_clone2]).await {
-                log_info!("[SFSNIPE] Jito attempt {} error: {}", attempt, e);
-            }
-        });
+        // Send via Jito bundle ONLY on the first attempt and ONLY on Mainnet
+        if attempt == 1 && config.network.to_lowercase() == "mainnet" {
+            let encoded_clone2 = encoded.clone();
+            tokio::spawn(async move {
+                if let Err(e) = send_via_jito(&[encoded_clone2]).await {
+                    log_info!("[SFSNIPE] Jito error: {}", e);
+                }
+            });
+        }
 
         if attempt < spam_count {
             sleep(Duration::from_millis(10)).await;
@@ -347,8 +443,7 @@ pub async fn handle_slidefun_buy(
 /// Check logs for a `create_bonding_curve` event from Slide.fun.
 pub fn is_creation_signal(logs: &[String], program_id_str: &str) -> bool {
     let logs_str = logs.join(" ");
-    logs_str.contains(program_id_str)
-        && logs_str.contains("Instruction: CreateBondingCurve")
+    logs_str.contains(program_id_str) && logs_str.contains("Instruction: CreateBondingCurve")
 }
 
 /// Parse the transaction to extract the new token mint from `create_bonding_curve`.
@@ -367,7 +462,10 @@ pub async fn extract_new_token_and_creator(
     };
 
     for attempt in 0..5 {
-        match rpc_client.get_transaction_with_config(&sig, config.clone()).await {
+        match rpc_client
+            .get_transaction_with_config(&sig, config.clone())
+            .await
+        {
             Ok(tx) => {
                 if let Some(decoded) = tx.transaction.transaction.decode() {
                     let message = &decoded.message;
@@ -377,10 +475,14 @@ pub async fn extract_new_token_and_creator(
                         use solana_transaction_status_client_types::option_serializer::OptionSerializer;
                         if let OptionSerializer::Some(loaded) = &meta.loaded_addresses {
                             for addr in &loaded.writable {
-                                if let Ok(pk) = Pubkey::from_str(addr) { all_keys.push(pk); }
+                                if let Ok(pk) = Pubkey::from_str(addr) {
+                                    all_keys.push(pk);
+                                }
                             }
                             for addr in &loaded.readonly {
-                                if let Ok(pk) = Pubkey::from_str(addr) { all_keys.push(pk); }
+                                if let Ok(pk) = Pubkey::from_str(addr) {
+                                    all_keys.push(pk);
+                                }
                             }
                         }
                     }
@@ -392,11 +494,14 @@ pub async fn extract_new_token_and_creator(
 
                     for ix in instructions {
                         let program_id = all_keys[ix.program_id_index as usize];
-                        if program_id != slidefun_program { continue; }
+                        if program_id != slidefun_program {
+                            continue;
+                        }
 
                         // Match create_bonding_curve discriminator
                         if ix.data.len() < 8
-                            || ix.data[0..8] != constants::SLIDEFUN_CREATE_BONDING_CURVE_DISCRIMINATOR
+                            || ix.data[0..8]
+                                != constants::SLIDEFUN_CREATE_BONDING_CURVE_DISCRIMINATOR
                         {
                             continue;
                         }
@@ -408,24 +513,31 @@ pub async fn extract_new_token_and_creator(
                         if ix.accounts.len() > 2 {
                             let token_mint = all_keys[ix.accounts[2] as usize];
                             let creator = all_keys[0]; // Fee payer is the creator
-                            
-                            // Determine which token program is used by checking instruction accounts
-                            let mut token_program_pk = Pubkey::from_str(constants::TOKEN_PROGRAM).unwrap();
-                            for &acc_idx in &ix.accounts {
-                                let pk = all_keys[acc_idx as usize];
-                                if pk.to_string() == constants::TOKEN_2022_PROGRAM {
-                                    token_program_pk = pk;
-                                    break;
-                                }
+
+                            // Determine which token program is used by checking if Token-2022 is anywhere in the transaction
+                            let mut token_program_pk =
+                                Pubkey::from_str(constants::TOKEN_PROGRAM).unwrap();
+                            let token_2022 =
+                                Pubkey::from_str(constants::TOKEN_2022_PROGRAM).unwrap();
+                            if all_keys.contains(&token_2022) {
+                                token_program_pk = token_2022;
                             }
 
                             log_info!(
-                                "[SFSNIPE] ✅ New token detected: {} (Program: {}) by creator: {}", 
-                                token_mint, 
-                                if token_program_pk.to_string() == constants::TOKEN_PROGRAM { "Token" } else { "Token-2022" },
+                                "[SFSNIPE] ✅ New token detected: {} (Program: {}) by creator: {}",
+                                token_mint,
+                                if token_program_pk.to_string() == constants::TOKEN_PROGRAM {
+                                    "Token"
+                                } else {
+                                    "Token-2022"
+                                },
                                 creator
                             );
-                            return Some((token_mint.to_string(), creator.to_string(), token_program_pk));
+                            return Some((
+                                token_mint.to_string(),
+                                creator.to_string(),
+                                token_program_pk,
+                            ));
                         }
                     }
                 }
@@ -440,5 +552,3 @@ pub async fn extract_new_token_and_creator(
     }
     None
 }
-
-

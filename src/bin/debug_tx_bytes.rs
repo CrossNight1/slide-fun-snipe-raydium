@@ -1,3 +1,5 @@
+use bincode;
+use bs58;
 /// Debug TX encoding: print the raw bytes to verify format is correct.
 use dotenvy;
 use slidefun_raydium_snipe::config::Config;
@@ -10,8 +12,6 @@ use solana_sdk::{
     system_instruction,
     transaction::VersionedTransaction,
 };
-use bincode;
-use bs58;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -19,7 +19,10 @@ use std::sync::Arc;
 async fn main() {
     dotenvy::dotenv().ok();
     let config = Config::from_env();
-    let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
+    let rpc_url = format!(
+        "https://mainnet.helius-rpc.com/?api-key={}",
+        config.helius_api_key
+    );
     let rpc = Arc::new(RpcClient::new(rpc_url));
 
     let user = config.keypair.pubkey();
@@ -38,10 +41,16 @@ async fn main() {
     // Encode both ways
     let bincode_bytes = bincode::serialize(&tx).unwrap();
     let b58_encoded = bs58::encode(&bincode_bytes).into_string();
-    
+
     println!("=== Bincode serialized ===");
     println!("Total bytes: {}", bincode_bytes.len());
-    println!("First 10 bytes (hex): {:?}", bincode_bytes[..10].iter().map(|b| format!("{:#04x}", b)).collect::<Vec<_>>());
+    println!(
+        "First 10 bytes (hex): {:?}",
+        bincode_bytes[..10]
+            .iter()
+            .map(|b| format!("{:#04x}", b))
+            .collect::<Vec<_>>()
+    );
     println!("Base58 encoded len: {}", b58_encoded.len());
     println!("Base58 first 30 chars: {}", &b58_encoded[..30]);
     println!();
@@ -52,10 +61,16 @@ async fn main() {
     println!();
 
     // Expected: byte[0] = 0x01 (1 signature), bytes[1..65] = signature, byte[65] = 0x80 (V0 message)
-    println!("byte[0] (num signatures): {:#04x} (expected: 0x01)", bincode_bytes[0]);
-    println!("byte[65] (message version): {:#04x} (expected: 0x80 for V0)", bincode_bytes[65]);
+    println!(
+        "byte[0] (num signatures): {:#04x} (expected: 0x01)",
+        bincode_bytes[0]
+    );
+    println!(
+        "byte[65] (message version): {:#04x} (expected: 0x80 for V0)",
+        bincode_bytes[65]
+    );
     println!();
-    
+
     // Also try sending this TX directly to verify it works
     println!("Testing direct send of tip TX via RPC...");
     match rpc.send_transaction(&tx).await {

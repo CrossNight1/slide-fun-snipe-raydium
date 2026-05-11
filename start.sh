@@ -61,5 +61,19 @@ echo ""
 # Open the dashboard automatically (Mac/Linux)
 (sleep 2 && open http://localhost:8080 || xdg-open http://localhost:8080) &> /dev/null &
 
-# Run the binary
-./target/release/slidefun-raydium-snipe
+# Run the binary in a loop to support "Force Restart" from the web dashboard
+while true; do
+    ./target/release/slidefun-raydium-snipe
+    ./target/release/slidefun-raydium-snipe
+    EXIT_CODE=$?
+    
+    # Restart on normal exit (code 0) or manual kill (e.g. 143)
+    # Only stop if the user actually stops the script or it fails to find the binary
+    if [ $EXIT_CODE -eq 130 ]; then
+        echo -e "${BLUE}[INFO] Bot stopped by user (Ctrl+C).${NC}"
+        exit 0
+    fi
+
+    echo -e "${YELLOW}[INFO] Bot stopped with code $EXIT_CODE. Restarting in 2 seconds...${NC}"
+    sleep 2
+done

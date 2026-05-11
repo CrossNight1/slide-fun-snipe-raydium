@@ -11,29 +11,28 @@
 //
 // The listener loop reconnects automatically on WebSocket disconnection.
 
-use std::{collections::HashSet, str::FromStr, sync::{Arc, atomic::{AtomicBool, Ordering}}};
+use std::{
+    collections::HashSet,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 use futures_util::StreamExt;
 use solana_client::{
     nonblocking::{pubsub_client::PubsubClient, rpc_client::RpcClient},
     rpc_config::{RpcTransactionLogsConfig, RpcTransactionLogsFilter},
 };
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signer::keypair::Keypair};
+use solana_sdk::{commitment_config::CommitmentConfig, signer::keypair::Keypair};
 use tokio::{
     sync::Mutex,
     time::{sleep, Duration},
 };
 
 use crate::{
-    blockhash::get_blockhash,
-    bundle_buy,
-    config::Config,
-    constants,
-    graduation,
-    handler::handle_buy,
-    log_info,
-    pool::get_pool_info,
-    slidefun_snipe,
+    blockhash::get_blockhash, bundle_buy, config::Config, graduation, handler::handle_buy,
+    log_info, pool::get_pool_info, slidefun_snipe,
 };
 
 /// Shared state passed into the listener loop.
@@ -68,15 +67,18 @@ pub async fn run(
     state: &ListenerState,
     bot_active: Arc<AtomicBool>,
 ) {
-    let enable_slidefun_create = matches!(config.snipe_mode.as_str(), "slidefun" | "both" | "listen_creator");
-    let enable_raydium_migrate = matches!(config.snipe_mode.as_str(), "raydium" | "both" | "listen_creator");
+    let enable_slidefun_create = matches!(
+        config.snipe_mode.to_lowercase().as_str(),
+        "slidefun" | "both" | "listen_creator"
+    );
+    let enable_raydium_migrate = matches!(
+        config.snipe_mode.to_lowercase().as_str(),
+        "raydium" | "both" | "listen_creator"
+    );
 
-    let slidefun_program = if let Some(prog) = &config.app.slidefun_program {
-        Pubkey::from_str(prog).unwrap_or_else(|_| Pubkey::from_str(constants::slidefun_program()).unwrap())
-    } else {
-        Pubkey::from_str(constants::slidefun_program()).unwrap()
-    };
-    let amm_program = Pubkey::from_str(constants::RAYDIUM_AMM_PROGRAM).unwrap();
+    let slidefun_program = config.slidefun_program();
+    let amm_program = config.raydium_program();
+    let amm_program_str = amm_program.to_string();
 
     // Cache Slide.fun fee_to at startup
     crate::slidefun_snipe::pre_fetch_fee_to(&rpc_client, &slidefun_program).await;
@@ -109,14 +111,22 @@ pub async fn run(
 
                 log_info!("[OK] ✅ Dual-listener active:");
                 log_info!("   [A] Slide.fun : {}", slidefun_program);
-                log_info!("   [B] Raydium V4: {}", constants::RAYDIUM_AMM_PROGRAM);
+                log_info!("   [B] Raydium V4: {}", amm_program);
                 log_info!(
                     "   [C] Slidefun-create snipe: {}",
-                    if enable_slidefun_create { "ACTIVE" } else { "DISABLED" }
+                    if enable_slidefun_create {
+                        "ACTIVE"
+                    } else {
+                        "DISABLED"
+                    }
                 );
                 log_info!(
                     "   [D] Listen-creator snipe : {}",
-                    if config.app.listen_creator { "ACTIVE" } else { "DISABLED" }
+                    if config.app.listen_creator {
+                        "ACTIVE"
+                    } else {
+                        "DISABLED"
+                    }
                 );
                 log_info!("[OK] Waiting for events...\n");
 
@@ -126,7 +136,10 @@ pub async fn run(
                     // Heartbeat every 60 s
                     if last_heartbeat.elapsed().as_secs() >= 60 {
                         let count = state.graduating_tokens.lock().await.len();
-                        log_info!("[HEARTBEAT] Running... Graduation watch-list: {} tokens", count);
+                        log_info!(
+                            "[HEARTBEAT] Running... Graduation watch-list: {} tokens",
+                            count
+                        );
                         last_heartbeat = std::time::Instant::now();
                     }
 
@@ -145,7 +158,12 @@ pub async fn run(
                             let logs = log.value.logs.clone();
 
                             // Mode: SLIDEFUN_CREATE or config.app.listen_creator
-                            if (enable_slidefun_create || config.app.listen_creator) && slidefun_snipe::is_creation_signal(&logs, &slidefun_program.to_string()) {
+                            if (enable_slidefun_create || config.app.listen_creator)
+                                && slidefun_snipe::is_creation_signal(
+                                    &logs,
+                                    &slidefun_program.to_string(),
+                                )
+                            {
                                 let signature = log.value.signature.clone();
                                 log_info!("[SFSNIPE] 🆕 New Slide.fun token! TX: {}", signature);
 
@@ -158,25 +176,35 @@ pub async fn run(
 
                                 tokio::spawn(async move {
                                     if let Some((mint, creator, token_program)) =
-                                        slidefun_snipe::extract_new_token_and_creator(&rpc_c, &signature, &cfg_c.slidefun_program()).await
+                                        slidefun_snipe::extract_new_token_and_creator(
+                                            &rpc_c,
+                                            &signature,
+                                            &cfg_c.slidefun_program(),
+                                        )
+                                        .await
                                     {
                                         let mut should_buy = false;
 
                                         // 1. Check Creator Tracking
-                                        let is_creator_mode = cfg_c.snipe_mode == "listen_creator";
+                                        let is_creator_mode =
+                                            cfg_c.snipe_mode.to_lowercase() == "listen_creator";
                                         if cfg_c.app.listen_creator || is_creator_mode {
-                                            if cfg_c.app.target_creators.contains(&creator) {
+                                            if cfg_c.is_creator_tracked(&creator) {
                                                 log_info!("[LISTEN_CREATOR] 🎯 Match! Tracking token {} from creator {}", mint, creator);
                                                 creator_c.lock().await.insert(mint.clone());
                                                 grad_c.lock().await.insert(mint.clone());
-                                                should_buy = true; 
+                                                should_buy = true;
                                             }
                                         }
 
                                         // 2. Check General Slide.fun Snipe (ONLY if mode is Slidefun/Both)
-                                        if !should_buy && (cfg_c.snipe_mode == "slidefun" || cfg_c.snipe_mode == "both") {
+                                        let smode = cfg_c.snipe_mode.to_lowercase();
+                                        if !should_buy && (smode == "slidefun" || smode == "both") {
                                             if cfg_c.is_whitelisted(&mint) {
-                                                log_info!("[SFSNIPE] 🎯 Match! Sniping {}...", mint);
+                                                log_info!(
+                                                    "[SFSNIPE] 🎯 Match! Sniping {}...",
+                                                    mint
+                                                );
                                                 should_buy = true;
                                             }
                                         }
@@ -198,20 +226,27 @@ pub async fn run(
                                         }
 
                                         slidefun_snipe::handle_slidefun_buy(
-                                            &cfg_c, rpc_c.clone(), &mint, token_program,
+                                            &cfg_c,
+                                            rpc_c.clone(),
+                                            &mint,
+                                            token_program,
                                         )
                                         .await;
 
                                         // Bundle buy
                                         if !wallets_c.is_empty() && !cfg_c.dry_run {
-                                            if let Some(fee_to) =
-                                                slidefun_snipe::fetch_fee_to(&rpc_c, &cfg_c.slidefun_program()).await
+                                            if let Some(fee_to) = slidefun_snipe::fetch_fee_to(
+                                                &rpc_c,
+                                                &cfg_c.slidefun_program(),
+                                            )
+                                            .await
                                             {
                                                 let bh = get_blockhash();
                                                 bundle_buy::slidefun_bundle_buy(
                                                     &cfg_c,
                                                     &wallets_c,
                                                     &mint,
+                                                    token_program,
                                                     &fee_to,
                                                     bh,
                                                 )
@@ -223,12 +258,14 @@ pub async fn run(
                             }
 
                             // Mode: RAYDIUM / BOTH — detect graduate migrate step
-                            if enable_raydium_migrate && graduation::is_graduation_signal(&logs, &slidefun_program.to_string()) {
+                            if enable_raydium_migrate
+                                && graduation::is_graduation_signal(
+                                    &logs,
+                                    &slidefun_program.to_string(),
+                                )
+                            {
                                 let signature = log.value.signature.clone();
-                                log_info!(
-                                    "[SLIDE-FUN] 🎓 Graduation detected! TX: {}",
-                                    signature
-                                );
+                                log_info!("[SLIDE-FUN] 🎓 Graduation detected! TX: {}", signature);
 
                                 let rpc_c = rpc_client.clone();
                                 let grad_c = state.graduating_tokens.clone();
@@ -239,7 +276,10 @@ pub async fn run(
                                     let keypair =
                                         Keypair::try_from(keypair_bytes.as_ref()).unwrap();
                                     if let Some(mint) = graduation::extract_graduating_token(
-                                        &rpc_c, &signature, &logs, &slidefun_program,
+                                        &rpc_c,
+                                        &signature,
+                                        &logs,
+                                        &slidefun_program,
                                     )
                                     .await
                                     {
@@ -264,8 +304,7 @@ pub async fn run(
                         // ── LISTENER B: Raydium AMM V4 ───────────────────────
                         Some(("raydium", log)) => {
                             let logs_str = log.value.logs.join(" ");
-                            let is_init = logs_str
-                                .contains("675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8 invoke")
+                            let is_init = logs_str.contains(&format!("{} invoke", amm_program_str))
                                 && (logs_str.contains("initialize2:")
                                     || logs_str.contains("Initialize2"));
 
@@ -278,87 +317,65 @@ pub async fn run(
 
                             let rpc_c = rpc_client.clone();
                             let cfg_c = config.clone();
-                            let grad_c = state.graduating_tokens.clone();
                             let ata_c = state.ata_pre_created_tokens.clone();
                             let sniped_c = state.sniped_tokens.clone();
                             let wallets_c = bundle_wallets.clone();
-                            let creator_c = state.creator_tracked_tokens.clone();
 
                             tokio::spawn(async move {
-                                if let Some(pool_info) =
-                                    get_pool_info(&rpc_c, &signature).await
-                                {
-                                    let token_key = pool_info.base_mint.to_string();
+                                log_info!("[RAYDIUM] 🔍 Fetching pool info for TX...");
+                                match get_pool_info(&rpc_c, &signature, cfg_c.raydium_program()).await {
+                                    Some(pool_info) => {
+                                        let token_key = pool_info.base_mint.to_string();
 
-                                    let is_target = if cfg_c.snipe_mode == "listen_creator" {
-                                        creator_c.lock().await.contains(&token_key)
-                                    } else {
-                                        cfg_c.is_whitelisted(&token_key)
-                                    };
-                                    if !is_target {
-                                        log_info!("   [SKIP] {} not in target whitelist or tracked by creator", token_key);
-                                        return;
-                                    }
-
-                                    // Skip if not from Slide.fun graduation (unless TEST_MODE)
-                                    if !cfg_c.test_mode {
-                                        let is_slidefun = {
-                                            grad_c.lock().await.contains(&token_key)
-                                        };
-                                        if !is_slidefun {
-                                            log_info!(
-                                                "   [SKIP] {} not from Slide.fun",
-                                                token_key
-                                            );
-                                            return;
+                                        // Raydium listener: snipe ALL new pools.
+                                        // Creator tracking only applies to Slide.fun listings.
+                                        // Dedup only — avoid double-buying the same pool.
+                                        {
+                                            let mut s = sniped_c.lock().await;
+                                            let key = format!("raydium:{}", token_key);
+                                            if s.contains(&key) {
+                                                log_info!(
+                                                    "   [SKIP] Already sniped: {}",
+                                                    token_key
+                                                );
+                                                return;
+                                            }
+                                            s.insert(key);
                                         }
-                                    } else {
+
+                                        let ata_pre = ata_c.lock().await.contains(&token_key);
+
                                         log_info!(
-                                            "   [TEST_MODE] Bypassing Slide.fun check: {}",
-                                            token_key
-                                        );
-                                    }
-
-                                    // Dedup
-                                    {
-                                        let mut s = sniped_c.lock().await;
-                                        let key = format!("raydium:{}", token_key);
-                                        if s.contains(&key) {
-                                            log_info!(
-                                                "   [SKIP] Already sniped: {}",
-                                                token_key
-                                            );
-                                            return;
-                                        }
-                                        s.insert(key);
-                                    }
-
-                                    let ata_pre = ata_c.lock().await.contains(&token_key);
-
-                                    // Remove from graduation watch-list
-                                    grad_c.lock().await.remove(&token_key);
-
-                                    log_info!(
-                                        "[SNIPE] 🚀 SLIDE-FUN TOKEN ON RAYDIUM! Sniping: {} (ATA pre-created: {})",
+                                        "[SNIPE] 🚀 New Raydium pool! Sniping: {} (ATA pre-created: {})",
                                         token_key,
                                         ata_pre
                                     );
 
-                                    // Main wallet buy
-                                    handle_buy(&cfg_c, rpc_c.clone(), pool_info.clone(), ata_pre)
-                                        .await;
-
-                                    // Bundle buy (sub-wallets)
-                                    if !wallets_c.is_empty() && !cfg_c.dry_run {
-                                        let bh = get_blockhash();
-                                        let pool_arc = Arc::new(pool_info);
-                                        bundle_buy::raydium_bundle_buy(
+                                        // Main wallet buy
+                                        handle_buy(
                                             &cfg_c,
-                                            &wallets_c,
-                                            pool_arc,
-                                            bh,
+                                            rpc_c.clone(),
+                                            pool_info.clone(),
+                                            ata_pre,
                                         )
                                         .await;
+
+                                        // Bundle buy (sub-wallets)
+                                        if !wallets_c.is_empty() && !cfg_c.dry_run {
+                                            let bh = get_blockhash();
+                                            let pool_arc = Arc::new(pool_info);
+                                            bundle_buy::raydium_bundle_buy(
+                                                &cfg_c, &wallets_c, pool_arc, bh,
+                                            )
+                                            .await;
+                                        }
+                                    } // end Some(pool_info)
+                                    None => {
+                                        log_info!("[RAYDIUM] ⚠️  Could not parse pool info from TX — skipping snipe");
+                                        log_info!(
+                                            "   TX: https://solscan.io/tx/{}?cluster=devnet",
+                                            signature
+                                        );
                                     }
                                 }
                             });
@@ -375,7 +392,10 @@ pub async fn run(
             }
 
             Err(e) => {
-                log_info!("[ERROR] WebSocket connection failed: {} — retrying in 100ms...", e);
+                log_info!(
+                    "[ERROR] WebSocket connection failed: {} — retrying in 100ms...",
+                    e
+                );
                 sleep(Duration::from_millis(100)).await;
             }
         }

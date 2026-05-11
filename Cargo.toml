@@ -47,6 +47,4 @@ lazy_static = "1"
 # Timestamp
 chrono = "0.4"
 
-# Solana system interface
-solana-system-interface = "3.0.0"
 base64 = "0.22.1"

@@ -1,8 +1,8 @@
+use crate::log_info;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::hash::Hash;
 use std::sync::Mutex;
 use tokio::time::{sleep, Duration};
-use crate::log_info;
 
 lazy_static::lazy_static! {
     static ref CURRENT_BLOCKHASH: Mutex<Hash> = Mutex::new(Hash::default());

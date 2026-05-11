@@ -1,3 +1,5 @@
+use bincode;
+use bs58;
 /// Test MINIMAL Jito bundle: just 2 simple transactions from main wallet.
 /// If even this doesn't land → issue is with bundle encoding/submission.
 use dotenvy;
@@ -11,8 +13,6 @@ use solana_sdk::{
     system_instruction,
     transaction::VersionedTransaction,
 };
-use bincode;
-use bs58;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -25,7 +25,10 @@ fn encode(tx: &VersionedTransaction) -> String {
 async fn main() {
     dotenvy::dotenv().ok();
     let config = Config::from_env();
-    let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", config.helius_api_key);
+    let rpc_url = format!(
+        "https://mainnet.helius-rpc.com/?api-key={}",
+        config.helius_api_key
+    );
     let rpc = Arc::new(RpcClient::new(rpc_url));
 
     let user = config.keypair.pubkey();
@@ -44,7 +47,8 @@ async fn main() {
         system_instruction::transfer(&user, &jito_tip, tip_lamports),
     ];
     let tip_msg = Message::try_compile(&user, &tip_ixs, &[], bh).unwrap();
-    let tip_tx = VersionedTransaction::try_new(VersionedMessage::V0(tip_msg), &[&config.keypair]).unwrap();
+    let tip_tx =
+        VersionedTransaction::try_new(VersionedMessage::V0(tip_msg), &[&config.keypair]).unwrap();
     let tip_encoded = encode(&tip_tx);
 
     // TX2: Transfer to a different Jito tip address (1 lamport, unique sig)
@@ -54,7 +58,8 @@ async fn main() {
         system_instruction::transfer(&user, &jito_tip2, 1),
     ];
     let tx2_msg = Message::try_compile(&user, &tx2_ixs, &[], bh).unwrap();
-    let tx2 = VersionedTransaction::try_new(VersionedMessage::V0(tx2_msg), &[&config.keypair]).unwrap();
+    let tx2 =
+        VersionedTransaction::try_new(VersionedMessage::V0(tx2_msg), &[&config.keypair]).unwrap();
     let tx2_encoded = encode(&tx2);
 
     println!("\nTX1 (tip) encoded len: {} chars", tip_encoded.len());
@@ -72,7 +77,7 @@ async fn main() {
     let resp_result = client_http.post(london_url)
         .json(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"sendBundle","params":[bundle.clone()]}))
         .send().await;
-    
+
     let bundle_id = match resp_result {
         Ok(r) => {
             let v: serde_json::Value = r.json().await.unwrap_or_default();
@@ -84,39 +89,55 @@ async fn main() {
                 return;
             }
         }
-        Err(e) => { println!("❌ Request error: {}", e); return; }
+        Err(e) => {
+            println!("❌ Request error: {}", e);
+            return;
+        }
     };
-    
+
     let id = bundle_id.clone();
-    
+
     match Ok::<String, String>(id) {
         Ok(id) => {
             println!("✅ Bundle sent: {}", id);
-            
+
             let client = reqwest::Client::new();
-            
+
             // Check immediately (0s)
             for wait_secs in [0u64, 2, 5, 10] {
                 if wait_secs > 0 {
                     tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
                 }
-                
+
                 let inflight_raw = client.post("https://ny.mainnet.block-engine.jito.wtf/api/v1/bundles")
                     .json(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getInflightBundleStatuses","params":[[id.clone()]]}))
                     .send().await;
                 let inflight = if let Ok(r) = inflight_raw {
-                    r.json::<serde_json::Value>().await.ok().map(|v| v["result"]["value"].clone())
-                } else { None };
-                
+                    r.json::<serde_json::Value>()
+                        .await
+                        .ok()
+                        .map(|v| v["result"]["value"].clone())
+                } else {
+                    None
+                };
+
                 let finalized_raw = client.post("https://ny.mainnet.block-engine.jito.wtf/api/v1/bundles")
                     .json(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getBundleStatuses","params":[[id.clone()]]}))
                     .send().await;
                 let finalized = if let Ok(r) = finalized_raw {
-                    r.json::<serde_json::Value>().await.ok().map(|v| v["result"]["value"].clone())
-                } else { None };
-                
+                    r.json::<serde_json::Value>()
+                        .await
+                        .ok()
+                        .map(|v| v["result"]["value"].clone())
+                } else {
+                    None
+                };
+
                 let elapsed = wait_secs;
-                println!("[+{}s] Inflight: {:?} | Finalized: {:?}", elapsed, inflight, finalized);
+                println!(
+                    "[+{}s] Inflight: {:?} | Finalized: {:?}",
+                    elapsed, inflight, finalized
+                );
             }
         }
         Err(e) => println!("❌ Error: {}", e),

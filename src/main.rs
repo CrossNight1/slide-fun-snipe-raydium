@@ -13,9 +13,9 @@ mod types;
 mod wallet;
 mod web;
 
-use std::sync::{Arc, atomic::AtomicBool};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{hash::Hash, signer::Signer};
+use std::sync::{atomic::AtomicBool, Arc};
 use tokio::time::{sleep, Duration};
 
 use blockhash::{blockhash_updater, get_blockhash};
@@ -35,10 +35,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if bundle_wallets.is_empty() {
         log_info!("   [BUNDLE] No enabled sub-wallets — single-wallet mode");
     } else {
-        log_info!("   [BUNDLE] {} enabled sub-wallet(s) loaded", bundle_wallets.len());
+        log_info!(
+            "   [BUNDLE] {} enabled sub-wallet(s) loaded",
+            bundle_wallets.len()
+        );
     }
 
-    let bot_active = Arc::new(AtomicBool::new(false)); // Start paused
+    let bot_active = Arc::new(AtomicBool::new(true)); // Start active by default
 
     // ── 4. Spawn web dashboard on port 8080 ──────────────────────────────────
     {
@@ -48,22 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── 5. Build RPC / WebSocket URLs ────────────────────────────────────────
-    let base_url = if config.network.to_lowercase() == "devnet" {
-        "devnet.helius-rpc.com"
-    } else {
-        "mainnet.helius-rpc.com"
-    };
-
-    let rpc_url = format!(
-        "https://{}?api-key={}",
-        base_url,
-        config.helius_api_key
-    );
-    let ws_url = format!(
-        "wss://{}?api-key={}",
-        base_url,
-        config.helius_api_key
-    );
+    let rpc_url = config.rpc_url();
+    let ws_url = config.ws_url();
 
     // ── 6. Start background blockhash updater ────────────────────────────────
     {
@@ -81,7 +70,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── 8. Run the dual-listener loop ────────────────────────────────────────
     let state = listener::ListenerState::new();
-    listener::run(config, rpc_client, bundle_wallets, &ws_url, &state, bot_active).await;
+    listener::run(
+        config,
+        rpc_client,
+        bundle_wallets,
+        &ws_url,
+        &state,
+        bot_active,
+    )
+    .await;
 
     Ok(())
 }
@@ -91,18 +88,31 @@ fn print_banner(config: &Config) {
     log_info!("║   SLIDE-FUN → RAYDIUM SNIPER  v0.2.0    ║");
     log_info!("╚══════════════════════════════════════════╝");
     log_info!("  Wallet      : {}", config.keypair.pubkey());
-    log_info!("  Sub-wallets : {}", config.app.bundle_wallets.iter().filter(|w| w.enabled).count());
+    log_info!(
+        "  Sub-wallets : {}",
+        config
+            .app
+            .bundle_wallets
+            .iter()
+            .filter(|w| w.enabled)
+            .count()
+    );
     log_info!("  SOL/main    : {} SOL", config.sol_amount);
     log_info!("  Jito tip    : {} SOL", config.jito_tip);
     log_info!("  Priority fee: {} µ-lam", config.priority_fee);
     let mode = match config.snipe_mode.as_str() {
         "slidefun" => "SLIDEFUN_CREATE",
-        "both"     => "BOTH (slidefun + raydium)",
-        _          => "RAYDIUM_MIGRATE [default]",
+        "both" => "BOTH (slidefun + raydium)",
+        _ => "RAYDIUM_MIGRATE [default]",
     };
     log_info!("  Snipe mode  : {}", mode);
-    if config.test_mode { log_info!("  ⚡ TEST_MODE  : ON"); }
-    if config.dry_run   { log_info!("  🧪 DRY RUN   : ON — no real trades"); }
-    else                { log_info!("  🚀 LIVE MODE : ON — real trades ENABLED"); }
+    if config.test_mode {
+        log_info!("  ⚡ TEST_MODE  : ON");
+    }
+    if config.dry_run {
+        log_info!("  🧪 DRY RUN   : ON — no real trades");
+    } else {
+        log_info!("  🚀 LIVE MODE : ON — real trades ENABLED");
+    }
     log_info!("  🌐 Dashboard : http://localhost:8080");
 }

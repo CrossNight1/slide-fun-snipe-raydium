@@ -72,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Parse pool
     log!("[2/3] Parsing pool from TX...");
-    let pool_info = match pool::get_pool_info(&rpc_client, &signature).await {
+    let pool_info = match pool::get_pool_info(&rpc_client, &signature, config.raydium_program()).await {
         Some(info) => {
             log!("[2/3] Pool parsed ✅");
             log!("   AMM ID:      {}", info.amm_id);
@@ -82,7 +82,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             log!("   Market ID:   {}", info.market_id);
             log!("   Market bids: {}", info.market_bids);
             log!("   Market asks: {}", info.market_asks);
-            log!("   Pool SOL:    {:.4} SOL", info.pool_sol_amount as f64 / 1e9);
+            log!(
+                "   Pool SOL:    {:.4} SOL",
+                info.pool_sol_amount as f64 / 1e9
+            );
             info
         }
         None => {

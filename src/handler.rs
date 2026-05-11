@@ -3,12 +3,8 @@
 // build and fire the swap transaction as fast as possible.
 
 use crate::{
-    blockhash::get_blockhash,
-    config::Config,
-    constants::WSOL_MINT,
-    log_info,
-    transaction::build_swap_instruction,
-    types::PoolInfo,
+    blockhash::get_blockhash, config::Config, constants::WSOL_MINT, log_info,
+    transaction::build_swap_instruction, types::PoolInfo,
 };
 use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
 #[allow(deprecated)]
@@ -23,18 +19,25 @@ use solana_sdk::{
     transaction::VersionedTransaction,
 };
 use spl_associated_token_account::{
-    get_associated_token_address,
-    get_associated_token_address_with_program_id,
+    get_associated_token_address, get_associated_token_address_with_program_id,
     instruction::create_associated_token_account_idempotent,
 };
 use std::{str::FromStr, sync::Arc};
 
-pub async fn handle_buy(config: &Config, rpc_client: Arc<RpcClient>, pool_info: PoolInfo, ata_pre_created: bool) {
+pub async fn handle_buy(
+    config: &Config,
+    rpc_client: Arc<RpcClient>,
+    pool_info: PoolInfo,
+    ata_pre_created: bool,
+) {
     log_info!("\n[SNIPE] 🎯 SLIDE-FUN GRADUATED TOKEN DETECTED ON RAYDIUM!");
     log_info!("   AMM ID: {}", pool_info.amm_id);
     log_info!("   Token: {}", pool_info.base_mint);
     if pool_info.pool_sol_amount > 0 {
-        log_info!("   Pool size: {:.4} SOL", pool_info.pool_sol_amount as f64 / 1e9);
+        log_info!(
+            "   Pool size: {:.4} SOL",
+            pool_info.pool_sol_amount as f64 / 1e9
+        );
     }
 
     let user = config.keypair.pubkey();
@@ -56,8 +59,12 @@ pub async fn handle_buy(config: &Config, rpc_client: Arc<RpcClient>, pool_info: 
     let mut instructions: Vec<Instruction> = vec![];
 
     // 1-2. Compute budget
-    instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(config.cu_limit));
-    instructions.push(ComputeBudgetInstruction::set_compute_unit_price(config.priority_fee));
+    instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
+        config.cu_limit,
+    ));
+    instructions.push(ComputeBudgetInstruction::set_compute_unit_price(
+        config.priority_fee,
+    ));
 
     // 3. Create ATA for new token (skip if already pre-created during graduation detection)
     if !ata_pre_created {
@@ -95,7 +102,8 @@ pub async fn handle_buy(config: &Config, rpc_client: Arc<RpcClient>, pool_info: 
         let blockhash = get_blockhash();
         let serialized = {
             let msg = Message::try_compile(&user, &instructions, &[], blockhash).unwrap();
-            let tx = VersionedTransaction::try_new(VersionedMessage::V0(msg), &[&config.keypair]).unwrap();
+            let tx = VersionedTransaction::try_new(VersionedMessage::V0(msg), &[&config.keypair])
+                .unwrap();
             bincode::serialize(&tx).unwrap()
         };
         log_info!("\n[TEST] === DRY RUN MODE ===");
@@ -111,8 +119,11 @@ pub async fn handle_buy(config: &Config, rpc_client: Arc<RpcClient>, pool_info: 
 
     // === LIVE MODE: SPAM for maximum chance ===
     // Slide.fun pools open immediately (open_time = 0), so we fire aggressively
-    log_info!("[SNIPE] 🚀 FIRING TX - {} instructions, Jito tip: {} SOL",
-        instructions.len(), config.jito_tip);
+    log_info!(
+        "[SNIPE] 🚀 FIRING TX - {} instructions, Jito tip: {} SOL",
+        instructions.len(),
+        config.jito_tip
+    );
 
     // Strategy: Send via BOTH RPC and Jito simultaneously for max coverage
     let spam_count = 8;
@@ -132,19 +143,23 @@ pub async fn handle_buy(config: &Config, rpc_client: Arc<RpcClient>, pool_info: 
             return;
         }
     };
-    let transaction = match VersionedTransaction::try_new(VersionedMessage::V0(message), &[&config.keypair]) {
-        Ok(t) => t,
-        Err(e) => {
-            log_info!("[WARN] sign err: {}", e);
-            return;
-        }
-    };
+    let transaction =
+        match VersionedTransaction::try_new(VersionedMessage::V0(message), &[&config.keypair]) {
+            Ok(t) => t,
+            Err(e) => {
+                log_info!("[WARN] sign err: {}", e);
+                return;
+            }
+        };
 
     let serialized = bincode::serialize(&transaction).unwrap();
     let encoded = bs58::encode(&serialized).into_string();
 
     // Log the transaction size to monitor the 1232-byte limit
-    log_info!("[SNIPE] TX Size: {} bytes (Limit: 1232 bytes)", serialized.len());
+    log_info!(
+        "[SNIPE] TX Size: {} bytes (Limit: 1232 bytes)",
+        serialized.len()
+    );
 
     for attempt in 1..=spam_count {
         // Send via RPC
@@ -154,14 +169,17 @@ pub async fn handle_buy(config: &Config, rpc_client: Arc<RpcClient>, pool_info: 
         // Fill-first mode: always skip preflight for maximum speed.
         let skip_pf = true;
         tokio::spawn(async move {
-            match rpc_clone.send_transaction_with_config(
-                &tx_clone,
-                RpcSendTransactionConfig {
-                    skip_preflight: skip_pf,
-                    max_retries: Some(0),
-                    ..Default::default()
-                },
-            ).await {
+            match rpc_clone
+                .send_transaction_with_config(
+                    &tx_clone,
+                    RpcSendTransactionConfig {
+                        skip_preflight: skip_pf,
+                        max_retries: Some(0),
+                        ..Default::default()
+                    },
+                )
+                .await
+            {
                 Ok(sig) => {
                     log_info!("[OK] RPC #{} sent: {}", attempt_num, sig);
                     log_info!("   https://solscan.io/tx/{}", sig);
@@ -189,5 +207,8 @@ pub async fn handle_buy(config: &Config, rpc_client: Arc<RpcClient>, pool_info: 
         tokio::time::sleep(tokio::time::Duration::from_millis(35)).await;
     }
 
-    log_info!("[SNIPE] Done - fired {} attempts via RPC + Jito", spam_count);
+    log_info!(
+        "[SNIPE] Done - fired {} attempts via RPC + Jito",
+        spam_count
+    );
 }

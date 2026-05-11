@@ -120,12 +120,13 @@ pub async fn send_bundle_to_url(
             format!("request error: {}", e).into()
         })?;
 
-    let result: Value = response
-        .json()
-        .await
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-            format!("decode error: {}", e).into()
-        })?;
+    let result: Value =
+        response
+            .json()
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                format!("decode error: {}", e).into()
+            })?;
 
     if let Some(bundle_id) = result["result"].as_str() {
         Ok(bundle_id.to_string())
@@ -133,8 +134,6 @@ pub async fn send_bundle_to_url(
         Err(format!("Jito error: {:?}", result).into())
     }
 }
-
-
 
 /// Build Raydium AMM V4 swapBaseIn instruction
 pub fn build_swap_instruction(

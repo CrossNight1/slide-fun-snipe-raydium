@@ -162,6 +162,7 @@ pub fn build_raydium_buy_tx_for_wallet(
 pub fn build_slidefun_buy_tx_for_wallet(
     keypair: &Keypair,
     token_mint: &Pubkey,
+    token_program: &Pubkey,
     fee_to: &Pubkey,
     program_id: &Pubkey,
     sol_lamports: u64,
@@ -173,7 +174,6 @@ pub fn build_slidefun_buy_tx_for_wallet(
 
     let user = keypair.pubkey();
     let wsol_mint = Pubkey::from_str(constants::WSOL_MINT).unwrap();
-    let token_program = Pubkey::from_str(constants::TOKEN_PROGRAM).unwrap();
     let user_payment_ata = get_associated_token_address(&user, &wsol_mint);
 
     let buy_ix = build_slidefun_buy_instruction(
@@ -182,6 +182,7 @@ pub fn build_slidefun_buy_tx_for_wallet(
         &wsol_mint,
         fee_to,
         program_id,
+        token_program,
         sol_lamports,
         0, // no min tokens out (max speed)
     );
@@ -189,14 +190,14 @@ pub fn build_slidefun_buy_tx_for_wallet(
     let ixs = vec![
         ComputeBudgetInstruction::set_compute_unit_limit(cu_limit),
         ComputeBudgetInstruction::set_compute_unit_price(priority_fee),
-        create_associated_token_account_idempotent(&user, &user, &wsol_mint, &token_program),
+        create_associated_token_account_idempotent(&user, &user, &wsol_mint, token_program),
         system_instruction::transfer(&user, &user_payment_ata, sol_lamports),
         Instruction {
-            program_id: token_program,
+            program_id: *token_program,
             accounts: vec![AccountMeta::new(user_payment_ata, false)],
             data: vec![17], // SyncNative
         },
-        create_associated_token_account_idempotent(&user, &user, token_mint, &token_program),
+        create_associated_token_account_idempotent(&user, &user, token_mint, token_program),
         buy_ix,
     ];
 
@@ -435,7 +436,7 @@ pub async fn raydium_bundle_buy(
         "mainnet.helius-rpc.com"
     };
     let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
-    let rpc = RpcClient::new(rpc_url);
+    let rpc = Arc::new(RpcClient::new(rpc_url));
 
     // Capture pre-buy balances for all wallets (used to detect confirmed buys)
     let wallet_pubkeys: Vec<Pubkey> = wallets.iter().map(|(kp, _)| kp.pubkey()).collect();
@@ -497,6 +498,35 @@ pub async fn raydium_bundle_buy(
             break;
         }
 
+        // --- TARGET NETWORK FALLBACK ---
+        if config.network.to_lowercase() == "devnet" {
+            log_info!("[BUNDLE] Target Network: Devnet — sending individual TXs via RPC");
+            for tx in &buy_txs {
+                let rpc_c = rpc.clone();
+                let tx_c = tx.clone();
+                tokio::spawn(async move {
+                    let _ = rpc_c.send_transaction(&tx_c).await;
+                });
+            }
+            log_info!("[BUNDLE] Waiting {}s for transactions to land...", CONFIRM_WAIT_SECS);
+            tokio::time::sleep(tokio::time::Duration::from_secs(CONFIRM_WAIT_SECS)).await;
+            
+            let futs: Vec<_> = wallet_pubkeys.iter().map(|pk| rpc.get_balance(pk)).collect();
+            let results = futures::future::join_all(futs).await;
+            for (idx, res) in results.into_iter().enumerate() {
+                let wi = pending[idx];
+                let cur_bal = res.unwrap_or(pre_balances[wi]);
+                let spent = pre_balances[wi].saturating_sub(cur_bal);
+                let sol_lamports = (wallets[wi].1 * LAMPORTS_PER_SOL as f64) as u64;
+                let bought_threshold = sol_lamports / 2;
+                if spent >= bought_threshold {
+                    wallet_bought[wi] = true;
+                    log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (spent {} lamports)", wi, spent);
+                }
+            }
+            continue; 
+        }
+
         let bundles = pack_into_bundles(&buy_txs, &config.keypair, jito_tip_lamports, current_bh);
         log_bundle_solscan_links(
             &buy_txs,
@@ -538,7 +568,7 @@ pub async fn raydium_bundle_buy(
             if spent >= bought_threshold {
                 wallet_bought[wi] = true;
                 log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (spent {} lamports)", wi, spent);
-            } else {
+            } else if !wallet_bought[wi] {
                 log_info!("[BUNDLE] ⏳ Wallet[{}] not confirmed yet (spent {} lamports, need ≥{})",
                     wi, spent, bought_threshold);
             }
@@ -662,7 +692,7 @@ pub async fn raydium_bundle_sell(
         "mainnet.helius-rpc.com"
     };
     let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
-    let rpc = RpcClient::new(rpc_url);
+    let rpc = Arc::new(RpcClient::new(rpc_url));
 
     let mut sell_txs = Vec::new();
     for (i, (wallet, _sol)) in wallets.iter().enumerate() {
@@ -693,6 +723,7 @@ pub async fn slidefun_bundle_buy(
     config: &Config,
     wallets: &[(Keypair, f64)],
     token_mint: &str,
+    token_program: Pubkey,
     fee_to: &Pubkey,
     blockhash: Hash,
 ) {
@@ -720,7 +751,7 @@ pub async fn slidefun_bundle_buy(
         "mainnet.helius-rpc.com"
     };
     let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
-    let rpc = RpcClient::new(rpc_url);
+    let rpc = Arc::new(RpcClient::new(rpc_url));
 
     // Capture pre-buy balances
     let sf_wallet_pubkeys: Vec<Pubkey> = wallets.iter().map(|(kp, _)| kp.pubkey()).collect();
@@ -759,7 +790,7 @@ pub async fn slidefun_bundle_buy(
             let sol_lamports = (*sol_amount * LAMPORTS_PER_SOL as f64) as u64;
             let slidefun_program = config.slidefun_program();
             match build_slidefun_buy_tx_for_wallet(
-                keypair, &token_mint_pk, fee_to, &slidefun_program, sol_lamports,
+                keypair, &token_mint_pk, &token_program, fee_to, &slidefun_program, sol_lamports,
                 config.cu_limit, config.priority_fee, current_bh,
             ) {
                 Some(tx) => {
@@ -773,6 +804,35 @@ pub async fn slidefun_bundle_buy(
         }
 
         if buy_txs.is_empty() { break; }
+        
+        // --- TARGET NETWORK FALLBACK ---
+        if config.network.to_lowercase() == "devnet" {
+            log_info!("[BUNDLE] Target Network: Devnet — sending individual TXs via RPC");
+            for tx in &buy_txs {
+                let rpc_c = rpc.clone();
+                let tx_c = tx.clone();
+                tokio::spawn(async move {
+                    let _ = rpc_c.send_transaction(&tx_c).await;
+                });
+            }
+            log_info!("[BUNDLE] Waiting {}s for transactions to land...", CONFIRM_WAIT_SECS);
+            tokio::time::sleep(tokio::time::Duration::from_secs(CONFIRM_WAIT_SECS)).await;
+            
+            let futs: Vec<_> = sf_wallet_pubkeys.iter().map(|pk| rpc.get_balance(pk)).collect();
+            let results = futures::future::join_all(futs).await;
+            for (idx, res) in results.into_iter().enumerate() {
+                let wi = pending[idx];
+                let cur_bal = res.unwrap_or(pre_balances[wi]);
+                let spent = pre_balances[wi].saturating_sub(cur_bal);
+                let sol_lamports = (wallets[wi].1 * LAMPORTS_PER_SOL as f64) as u64;
+                let bought_threshold = sol_lamports / 2;
+                if spent >= bought_threshold {
+                    wallet_bought[wi] = true;
+                    log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (spent {} lamports)", wi, spent);
+                }
+            }
+            continue;
+        }
 
         let bundles = pack_into_bundles(&buy_txs, &config.keypair, jito_tip_lamports, current_bh);
         log_bundle_solscan_links(
@@ -812,7 +872,7 @@ pub async fn slidefun_bundle_buy(
             if spent >= bought_threshold {
                 wallet_bought[wi] = true;
                 log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (spent {} lamports)", wi, spent);
-            } else {
+            } else if !wallet_bought[wi] {
                 log_info!("[BUNDLE] ⏳ Wallet[{}] not confirmed yet (spent {} lamports, need ≥{})", wi, spent, bought_threshold);
             }
         }
@@ -827,4 +887,127 @@ pub async fn slidefun_bundle_buy(
     }
 
     log_info!("[BUNDLE] ✅ Done");
+}
+
+/// Build a single **Slide.fun bonding curve sell** transaction for a sub-wallet.
+pub async fn build_slidefun_sell_tx_for_wallet(
+    rpc: &RpcClient,
+    keypair: &Keypair,
+    token_mint: &Pubkey,
+    token_program: &Pubkey,
+    fee_to: &Pubkey,
+    program_id: &Pubkey,
+    percent: f64,
+    cu_limit: u32,
+    priority_fee: u64,
+    blockhash: Hash,
+) -> Option<VersionedTransaction> {
+    use crate::slidefun_snipe::build_slidefun_sell_instruction;
+
+    let user = keypair.pubkey();
+    let wsol_mint = Pubkey::from_str(constants::WSOL_MINT).unwrap();
+    let user_token_ata = get_associated_token_address_with_program_id(&user, token_mint, token_program);
+
+    // Fetch token balance
+    let balance_resp = rpc.get_token_account_balance(&user_token_ata).await.ok()?;
+    let amount_u64 = balance_resp.amount.parse::<u64>().ok()?;
+    if amount_u64 == 0 {
+        return None;
+    }
+
+    let sell_amount = if percent >= 100.0 {
+        amount_u64
+    } else {
+        (amount_u64 as f64 * (percent / 100.0)) as u64
+    };
+
+    if sell_amount == 0 {
+        return None;
+    }
+
+    let sell_ix = build_slidefun_sell_instruction(
+        &user,
+        token_mint,
+        &wsol_mint,
+        fee_to,
+        program_id,
+        token_program,
+        sell_amount,
+        0, // no min SOL out (max speed)
+    );
+
+    let ixs = vec![
+        ComputeBudgetInstruction::set_compute_unit_limit(cu_limit),
+        ComputeBudgetInstruction::set_compute_unit_price(priority_fee),
+        sell_ix,
+    ];
+
+    match Message::try_compile(&user, &ixs, &[], blockhash) {
+        Ok(msg) => {
+            match VersionedTransaction::try_new(VersionedMessage::V0(msg), &[keypair]) {
+                Ok(tx) => Some(tx),
+                Err(e) => { log_info!("[BUNDLE] Wallet {} SF sell sign error: {}", user, e); None }
+            }
+        }
+        Err(e) => { log_info!("[BUNDLE] Wallet {} SF sell compile error: {}", user, e); None }
+    }
+}
+
+/// Fire a multi-wallet bundle sell on Slide.fun Bonding Curve.
+pub async fn slidefun_bundle_sell(
+    config: &Config,
+    wallets: &[(Keypair, f64)],
+    token_mint: &str,
+    token_program: Pubkey,
+    fee_to: &Pubkey,
+    percent: f64,
+    blockhash: Hash,
+) {
+    if wallets.is_empty() {
+        log_info!("[BUNDLE] No bundle wallets loaded — skipping bundle sell");
+        return;
+    }
+
+    let token_mint_pk = match Pubkey::from_str(token_mint) {
+        Ok(pk) => pk,
+        Err(e) => { log_info!("[BUNDLE] Invalid token mint: {}", e); return; }
+    };
+
+    let rpc = Arc::new(RpcClient::new(config.rpc_url()));
+    let jito_tip_lamports = (config.jito_tip * LAMPORTS_PER_SOL as f64) as u64;
+    let slidefun_program = config.slidefun_program();
+
+    log_info!("[BUNDLE] 🚀 Multi-wallet Slide.fun SELL: {} wallets, {:.1}% of tokens", wallets.len(), percent);
+
+    let mut sell_txs: Vec<VersionedTransaction> = Vec::new();
+    let mut wallet_indices = Vec::new();
+
+    for (wi, (kp, _)) in wallets.iter().enumerate() {
+        if let Some(tx) = build_slidefun_sell_tx_for_wallet(
+            &rpc,
+            kp,
+            &token_mint_pk,
+            &token_program,
+            fee_to,
+            &slidefun_program,
+            percent,
+            config.cu_limit,
+            config.priority_fee,
+            blockhash,
+        ).await {
+            sell_txs.push(tx);
+            wallet_indices.push(wi);
+        }
+    }
+
+    if sell_txs.is_empty() {
+        log_info!("[BUNDLE] ⚠️  No wallets have tokens to sell.");
+        return;
+    }
+
+    let bundles = pack_into_bundles(&sell_txs, &config.keypair, jito_tip_lamports, blockhash);
+    
+    log_info!("[BUNDLE] Firing {} sell bundle(s)...", bundles.len());
+    fire_bundles(bundles).await;
+    log_info!("[BUNDLE] ✅ Sell bundles fired.");
 }

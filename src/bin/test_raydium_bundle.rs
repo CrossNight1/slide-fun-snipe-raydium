@@ -14,10 +14,8 @@
 // Find a real pool TX: https://solscan.io/txs?filter=Successful&programId=675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
 // Look for "initialize2" instructions.
 
-use slidefun_raydium_snipe::{
-    bundle_buy, config::Config, constants, pool::get_pool_info,
-};
 use dotenvy;
+use slidefun_raydium_snipe::{bundle_buy, config::Config, constants, pool::get_pool_info};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_sdk::{
@@ -27,8 +25,7 @@ use solana_sdk::{
     signer::{keypair::Keypair, Signer},
 };
 use spl_associated_token_account::{
-    get_associated_token_address,
-    get_associated_token_address_with_program_id,
+    get_associated_token_address, get_associated_token_address_with_program_id,
 };
 use std::str::FromStr;
 use std::sync::Arc;
@@ -56,9 +53,13 @@ async fn main() {
 
     // Explicit CLI mode override
     if force_live {
-        unsafe { std::env::set_var("DRY_RUN", "false"); }
+        unsafe {
+            std::env::set_var("DRY_RUN", "false");
+        }
     } else if force_dry {
-        unsafe { std::env::set_var("DRY_RUN", "true"); }
+        unsafe {
+            std::env::set_var("DRY_RUN", "true");
+        }
     }
 
     let config = Config::from_env();
@@ -71,22 +72,32 @@ async fn main() {
     println!("\n╔════════════════════════════════════════════════════════╗");
     println!("║       RAYDIUM BUNDLE BUY TEST                        ║");
     println!("╚════════════════════════════════════════════════════════╝");
-    println!("  Mode       : {}", if config.dry_run { "DRY RUN (no TX sent)" } else { "⚡ LIVE (real SOL!)" });
+    println!(
+        "  Mode       : {}",
+        if config.dry_run {
+            "DRY RUN (no TX sent)"
+        } else {
+            "⚡ LIVE (real SOL!)"
+        }
+    );
     println!("  TX Sig     : {}", &signature[..20]);
     println!("  Main wallet: {}", config.keypair.pubkey());
     println!("  SOL/main   : {} SOL", config.sol_amount);
-    println!("  SOL/wallet : {} SOL", config.app.bundle_wallets.first().map(|w| w.sol_amount).unwrap_or(0.05));
+    println!("  SOL/wallet : {} SOL", config.app.slidefun_pump_amount);
     println!("  Jito tip   : {} SOL", config.jito_tip);
     println!();
 
     // Step 1: Fetch pool info from TX
     println!("  [1/4] Fetching pool info from TX...");
-    let pool_info = match get_pool_info(&rpc, signature).await {
+    let pool_info = match get_pool_info(&rpc, signature, config.raydium_program()).await {
         Some(p) => {
             println!("        AMM ID   : {}", p.amm_id);
             println!("        Token    : {}", p.base_mint);
             if p.pool_sol_amount > 0 {
-                println!("        Pool size: {:.4} SOL", p.pool_sol_amount as f64 / 1e9);
+                println!(
+                    "        Pool size: {:.4} SOL",
+                    p.pool_sol_amount as f64 / 1e9
+                );
             }
             p
         }
@@ -223,16 +234,13 @@ async fn main() {
 
         if config.dry_run {
             println!("        DRY RUN — not sending");
-            println!("        Would fire {} bundles × 4 Jito endpoints",
-                (wallets.len() + 3) / 4);
+            println!(
+                "        Would fire {} bundles × 4 Jito endpoints",
+                (wallets.len() + 3) / 4
+            );
         } else {
             let pool_arc = Arc::new(pool_info);
-            bundle_buy::raydium_bundle_buy(
-                &config,
-                &wallets,
-                pool_arc,
-                bh,
-            ).await;
+            bundle_buy::raydium_bundle_buy(&config, &wallets, pool_arc, bh).await;
         }
     }
 

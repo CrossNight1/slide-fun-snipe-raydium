@@ -1,5 +1,9 @@
 use chrono::Local;
-use std::{fs::{self, OpenOptions}, io::Write, sync::OnceLock};
+use std::{
+    fs::{self, OpenOptions},
+    io::Write,
+    sync::OnceLock,
+};
 use tokio::sync::broadcast;
 
 /// Global broadcast channel — subscribers receive every log line.

@@ -45,7 +45,37 @@
     flex-direction: column;
     padding: 24px 0;
     flex-shrink: 0;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
   }
+  .sidebar.collapsed { width: 72px; }
+  .sidebar.collapsed .logo-text, 
+  .sidebar.collapsed .nav-text { display: none; }
+  .sidebar.collapsed .sidebar-logo { padding: 0 0 32px; justify-content: center; }
+  .sidebar.collapsed .nav-item { justify-content: center; padding: 12px 0; margin: 4px 12px; }
+  .sidebar.collapsed .nav-icon { margin: 0; }
+
+  .sidebar-toggle {
+    position: absolute;
+    right: -12px;
+    top: 32px;
+    width: 24px;
+    height: 24px;
+    background: var(--accent);
+    border: none;
+    border-radius: 50%;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 10px;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    transition: 0.3s;
+  }
+  .sidebar.collapsed .sidebar-toggle { right: 24px; top: 70px; transform: rotate(180deg); }
+
   .sidebar-logo {
     padding: 0 24px 32px;
     display: flex;
@@ -107,7 +137,9 @@
     overflow: hidden;
   }
   .content {
-    flex: 1;
+    width: 950px;
+    flex-shrink: 0;
+    padding: 32px;
     overflow-y: auto;
     position: relative;
     padding-bottom: 20px;
@@ -240,6 +272,47 @@
   input:checked + .slider { background: var(--accent); }
   input:checked + .slider:before { transform: translateX(22px); }
 
+  /* ── Sub Tabs ── */
+  .sub-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    padding: 4px;
+    background: var(--glass);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    width: fit-content;
+  }
+  .sub-tab {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .sub-tab:hover {
+    color: var(--text);
+  }
+  .sub-tab.active {
+    background: var(--panel);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+  }
+  .sub-view {
+    display: none;
+  }
+  .sub-view.active {
+    display: block;
+    animation: fadeInSub 0.3s ease-out;
+  }
+  @keyframes fadeInSub {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
   /* ── Buttons ── */
   .btn {
     padding: 12px 24px;
@@ -290,7 +363,8 @@
 
   /* ── Log Terminal (Persistent) ── */
   .persistent-logs {
-    width: 750px;
+    flex: 1;
+    min-width: 350px;
     background: #000;
     border-left: 1px solid var(--border);
     display: flex;
@@ -353,10 +427,57 @@
     padding: 16px;
     margin-bottom: 12px;
   }
-  .wallet-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-  .wallet-status { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 700; color: var(--muted); }
+  .wallet-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .wallet-status { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 0.8rem; }
 
-  /* ── Toast ── */
+  /* ── Manual Wallet List Styles ── */
+  .manual-wallet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .manual-wallet-item {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.2s;
+  }
+  .manual-wallet-item:hover {
+    border-color: rgba(124, 92, 252, 0.3);
+    background: rgba(255,255,255,0.05);
+  }
+  .manual-wallet-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .manual-wallet-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .manual-wallet-action {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .manual-wallet-action label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .manual-wallet-action input {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    background: rgba(0,0,0,0.3);
+  }
+
+  /* ── Toasts ── */
   .toast {
     position: fixed; bottom: 32px; right: 32px;
     padding: 14px 24px; border-radius: 12px;
@@ -387,7 +508,8 @@
 <body>
 
   <!-- ── Sidebar ── -->
-  <aside class="sidebar">
+  <aside id="sidebar" class="sidebar">
+    <button class="sidebar-toggle" onclick="toggleSidebar()">❮</button>
     <div class="sidebar-logo">
       <div class="logo-square">⚡</div>
       <div class="logo-text">
@@ -396,13 +518,19 @@
     </div>
     <nav class="nav-menu">
       <div class="nav-item active" onclick="switchView('dashboard', this)">
-        <span class="nav-icon">📊</span> Dashboard
+        <span class="nav-icon">⚙️</span> <span class="nav-text">Bot Configuration</span>
       </div>
       <div class="nav-item" onclick="switchView('wallets', this)">
-        <span class="nav-icon">🏦</span> Wallets
+        <span class="nav-icon">🏦</span> <span class="nav-text">Wallets</span>
+      </div>
+      <div class="nav-item" onclick="switchView('network', this)">
+        <span class="nav-icon">🌐</span> <span class="nav-text">Network Profiles</span>
+      </div>
+      <div class="nav-item" onclick="switchView('manual', this)">
+        <span class="nav-icon">🚀</span> <span class="nav-text">Manual Execution</span>
       </div>
       <div class="nav-item" onclick="switchView('guide', this)">
-        <span class="nav-icon">📖</span> Terminology
+        <span class="nav-icon">📖</span> <span class="nav-text">Terminology</span>
       </div>
     </nav>
   </aside>
@@ -410,7 +538,8 @@
     <div class="main-wrapper">
       <header class="top-header">
         <div class="header-stats">
-          <button id="toggle-bot-btn" class="btn btn-primary" onclick="toggleBotState()" style="margin-right:20px; min-width: 160px; font-weight:800; border-radius: 99px;">▶ START BOT</button>
+          <button id="toggle-bot-btn" class="btn btn-primary" onclick="toggleBotState()" style="margin-right:10px; min-width: 140px; font-weight:800; border-radius: 99px;">▶ START BOT</button>
+          <button class="btn btn-outline" onclick="restartEngine()" style="margin-right:20px; font-weight:800; border-radius: 99px; border-color: rgba(255,255,255,0.2);">🔄 RESTART</button>
           <div class="stat-pill" id="mode-badge">
             <span class="stat-dot yellow"></span> <span id="mode-label">DRY RUN</span>
           </div>
@@ -426,9 +555,10 @@
 
       <div style="display: flex; flex: 1; overflow: hidden;">
         <main class="content">
-          <!-- ── Dashboard View ── -->
+          <!-- ── Auto-Sniper Config View ── -->
         <div id="view-dashboard" class="view active">
           <div class="grid">
+            <!-- Core Settings -->
             <!-- Core Settings -->
             <div class="card">
               <div class="card-title">
@@ -448,10 +578,6 @@
                   <option value="devnet">Devnet</option>
                 </select>
               </div>
-              <div class="field" style="margin-bottom: 20px;">
-                <label>Slide.fun Program ID</label>
-                <input id="slidefun_program" type="text" placeholder="Enter Program ID..."/>
-              </div>
               <div class="form-row">
                 <div class="field">
                   <label>Jito Tip (SOL)</label>
@@ -462,14 +588,9 @@
                   <input id="cu_limit" type="number" step="10000" min="0"/>
                 </div>
               </div>
-              <div class="form-row">
                 <div class="field">
                   <label>Priority Fee (µ-lam)</label>
                   <input id="priority_fee" type="number" step="10000" min="0"/>
-                </div>
-                <div class="field">
-                  <label>Slide.fun Buy (SOL)</label>
-                  <input id="slidefun_pump_amount" type="number" step="0.01" min="0"/>
                 </div>
               </div>
 
@@ -494,8 +615,8 @@
               <div style="margin-top: 24px;"></div>
               <div class="switch-row">
                 <div class="switch-info">
-                  <h4>Auto Snipe All</h4>
-                  <p>Ignore whitelist and buy every launch</p>
+                  <h4>Auto Snipe All (Slide.fun / Both Modes)</h4>
+                  <p style="line-height: 1.4;"><b>ON:</b> Snipe EVERY new token that launches on Slide.fun.<br/><b>OFF:</b> Only snipe tokens in the Target Whitelist.</p>
                 </div>
                 <label class="switch"><input type="checkbox" id="auto_snipe_all"/><span class="slider"></span></label>
               </div>
@@ -515,60 +636,191 @@
               </div>
 
             </div>
+          </div>
 
-            <!-- Whitelist -->
-            <div class="card" style="grid-column: span 1;">
+        <!-- ── Network Profiles View ── -->
+        <div id="view-network" class="view">
+          <div class="alert" style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.2); color: #ff9800; padding: 15px; border-radius: 12px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; font-size: 0.85rem;">
+            <span>⚠️</span>
+            <span style="flex: 1;"><strong>Restart Required:</strong> Changes to Program IDs, RPC/WS URLs, or switching the active Network require a manual bot restart (Ctrl+C and restart <code>./start.sh</code>) to take effect in the event listener.</span>
+            <button class="btn btn-xs btn-danger" onclick="restartEngine()" style="white-space: nowrap;">Force Restart Now</button>
+          </div>
+
+          <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 24px;">
+            
+            <!-- Mainnet Profile -->
+            <div class="card">
               <div class="card-title">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                  <div class="card-title-icon">📝</div> Target Whitelist
+                  <div class="card-title-icon" style="background: var(--accent); color: white;">M</div> Mainnet Profile
                 </div>
                 <button class="btn-save-mini" onclick="saveConfig()">Save</button>
               </div>
-              <p style="font-size: 0.75rem; color: var(--muted); margin-bottom: 16px;">The bot will only trade these tokens if Auto Snipe All is OFF.</p>
-              <div id="mints-container" class="mint-list"></div>
-              <button class="btn btn-outline btn-sm" onclick="addMint()" style="margin-top: 16px; width: 100%">+ Add New Target Mint</button>
-
-            </div>
-
-            <!-- Target Creators -->
-            <div class="card" style="grid-column: span 1;">
-              <div class="card-title">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                  <div class="card-title-icon">👤</div> Target Creators
+              
+              <div class="form-row" style="margin-bottom: 16px;">
+                <div class="field">
+                  <label>Slide.fun Program ID</label>
+                  <input id="slidefun_program_mainnet" type="text" placeholder="6t4ZUwY..."/>
                 </div>
-                <button class="btn-save-mini" onclick="saveConfig()">Save</button>
+                <div class="field">
+                  <label>Raydium Program ID</label>
+                  <input id="raydium_program_mainnet" type="text" placeholder="675k1vH..."/>
+                </div>
               </div>
-              <p style="font-size: 0.75rem; color: var(--muted); margin-bottom: 16px;">Only used in Listen Creator mode to track tokens by creator.</p>
-              <div id="creators-container" class="mint-list"></div>
-              <button class="btn btn-outline btn-sm" onclick="addCreator()" style="margin-top: 16px; width: 100%">+ Add New Creator</button>
+              
+              <div class="form-row" style="margin-bottom: 16px;">
+                <div class="field">
+                  <label>HTTP RPC URL (Mainnet)</label>
+                  <input id="mainnet_rpc" type="text" placeholder="https://mainnet.helius-rpc.com/..."/>
+                </div>
+                <div class="field">
+                  <label>WebSocket URL (Mainnet)</label>
+                  <input id="mainnet_ws" type="text" placeholder="wss://mainnet.helius-rpc.com/..."/>
+                </div>
+              </div>
 
-            </div>
-
-            <!-- Manual Actions -->
-            <div class="card" style="grid-column: span 2;">
-              <div class="card-title"><div class="card-title-icon">🚀</div> Manual Bundle Execution</div>
               <div class="field" style="margin-bottom: 20px;">
-                <label>Target Mint Address</label>
-                <input id="manual_mint" type="text" placeholder="Enter token address..."/>
+                <label>Jito Block Engine Region</label>
+                <select id="jito_region">
+                  <option value="ny">New York</option>
+                  <option value="amsterdam">Amsterdam</option>
+                  <option value="tokyo">Tokyo</option>
+                  <option value="frankfurt">Frankfurt</option>
+                  <option value="slc">Salt Lake City</option>
+                </select>
               </div>
-              <div class="form-row">
+
+              <div style="margin-top: 24px;">
+                <label style="font-size: 0.7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 10px;">Target Whitelist (Mainnet)</label>
+                <div id="mints-container" class="mint-list"></div>
+                <button class="btn btn-outline btn-sm" onclick="addMint('mainnet')" style="margin-top: 12px; width: 100%">+ Add Mainnet Target</button>
+              </div>
+
+              <div style="margin-top: 24px;">
+                <label style="font-size: 0.7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 10px;">Target Creators (Mainnet)</label>
+                <div id="creators-container" class="mint-list"></div>
+                <button class="btn btn-outline btn-sm" onclick="addCreator('mainnet')" style="margin-top: 12px; width: 100%">+ Add Mainnet Creator</button>
+              </div>
+            </div>
+
+            <!-- Devnet Profile -->
+            <div class="card">
+              <div class="card-title">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="card-title-icon" style="background: var(--accent2); color: black;">D</div> Devnet Profile
+                </div>
+                <button class="btn-save-mini" onclick="saveConfig()">Save</button>
+              </div>
+              
+              <div class="form-row" style="margin-bottom: 16px;">
                 <div class="field">
-                  <label>Buy Amount (SOL/wallet)</label>
-                  <input id="manual_sol" type="number" step="0.01" value="0.05"/>
+                  <label>Slide.fun Program ID (Devnet)</label>
+                  <input id="slidefun_program_devnet" type="text" placeholder="6t4ZUwY..."/>
                 </div>
                 <div class="field">
-                  <label>Sell Percentage (%)</label>
-                  <input id="manual_percent" type="number" step="1" value="100" min="1" max="100"/>
+                  <label>Raydium Program ID (Devnet)</label>
+                  <input id="raydium_program_devnet" type="text" placeholder="DRaya7K..."/>
                 </div>
               </div>
-              <div class="btn-row" style="margin-top: 24px; display: flex; gap: 12px;">
-                <button class="btn btn-primary" onclick="manualBuy()" style="flex: 1">🎯 Manual Buy Bundle</button>
-                <button class="btn btn-danger" onclick="manualSell()" style="flex: 1">💸 Manual Sell Bundle</button>
+
+              <div class="form-row" style="margin-bottom: 16px;">
+                <div class="field">
+                  <label>HTTP RPC URL (Devnet)</label>
+                  <input id="devnet_rpc" type="text" placeholder="https://devnet.helius-rpc.com/..."/>
+                </div>
+                <div class="field">
+                  <label>WebSocket URL (Devnet)</label>
+                  <input id="devnet_ws" type="text" placeholder="wss://devnet.helius-rpc.com/..."/>
+                </div>
               </div>
-              <div style="margin-top: 20px; padding: 16px; background: rgba(255,160,0,0.05); border: 1px solid rgba(255,160,0,0.1); border-radius: 12px;">
-                <p style="font-size: 0.75rem; color: #ffca28; line-height: 1.5;">
-                  <strong>Pro Tip:</strong> Manual actions trigger for <strong>all enabled wallets</strong> in your list simultaneously using Jito bundles.
-                </p>
+
+              <div style="margin-top: 24px;">
+                <label style="font-size: 0.7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 10px;">Target Whitelist (Devnet)</label>
+                <div id="mints-container-devnet" class="mint-list"></div>
+                <button class="btn btn-outline btn-sm" onclick="addMint('devnet')" style="margin-top: 12px; width: 100%">+ Add Devnet Target</button>
+              </div>
+
+              <div style="margin-top: 24px;">
+                <label style="font-size: 0.7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 10px;">Target Creators (Devnet)</label>
+                <div id="creators-container-devnet" class="mint-list"></div>
+                <button class="btn btn-outline btn-sm" onclick="addCreator('devnet')" style="margin-top: 12px; width: 100%">+ Add Devnet Creator</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── Manual Execution View ── -->
+        <div id="view-manual" class="view">
+          <div class="grid">
+            <div class="card" style="grid-column: span 2;">
+              <div class="card-title">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="card-title-icon">🎯</div> Manual Bundle Execution
+                </div>
+              </div>
+              <div class="form-row" style="margin-bottom: 24px;">
+                <div class="field">
+                  <label>Token Mint to Snipe/Sell</label>
+                  <input id="manual_mint_v2" type="text" placeholder="Paste Token Mint Address here..." style="font-family: monospace;"/>
+                </div>
+              </div>
+              <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: -10px; margin-bottom: 20px;">
+                This will execute trades across all <strong>ENABLED</strong> sub-wallets in your bundle list.
+              </p>
+              
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05);">
+                  <h3 style="font-size: 1rem; margin-bottom: 16px; color: var(--accent);">Slide.fun (Bonding Curve)</h3>
+                  <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <button class="btn btn-primary" onclick="manualBundleAction('slidefun_buy', 'manual_mint_v2')" style="background: linear-gradient(135deg, #00ff88 0%, #00bd65 100%);">
+                      🚀 BUNDLE BUY (Slide.fun)
+                    </button>
+                    <div style="display: flex; gap: 8px;">
+                      <select id="sell_percent_sf" class="input" style="width: 100px; padding: 10px; background: rgba(0,0,0,0.3); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                        <option value="100">Sell 100%</option>
+                        <option value="75">Sell 75%</option>
+                        <option value="50">Sell 50%</option>
+                        <option value="25">Sell 25%</option>
+                      </select>
+                      <button class="btn btn-outline" onclick="manualBundleAction('slidefun_sell', 'manual_mint_v2')" style="flex: 1; border-color: #ff9800; color: #ff9800;">
+                        📉 BUNDLE SELL (Slide.fun)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05);">
+                  <h3 style="font-size: 1rem; margin-bottom: 16px; color: var(--accent2);">Raydium (Migrated)</h3>
+                  <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <button class="btn btn-primary" onclick="manualBundleAction('raydium_buy', 'manual_mint_v2')" style="background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);">
+                      🛒 BUNDLE BUY (Raydium)
+                    </button>
+                    <div style="display: flex; gap: 8px;">
+                      <select id="sell_percent_v2" class="input" style="width: 100px; padding: 10px; background: rgba(0,0,0,0.3); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                        <option value="100">Sell 100%</option>
+                        <option value="75">Sell 75%</option>
+                        <option value="50">Sell 50%</option>
+                        <option value="25">Sell 25%</option>
+                      </select>
+                      <button class="btn btn-outline" onclick="manualBundleAction('raydium_sell', 'manual_mint_v2')" style="flex: 1; border-color: #ff4b2b; color: #ff4b2b;">
+                        📉 BUNDLE SELL
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="card" style="grid-column: span 2;">
+              <div class="card-title">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="card-title-icon">📊</div> Active Sub-Wallets
+                </div>
+              </div>
+              <div id="manual-wallet-list" class="manual-wallet-grid">
+                <!-- Filled by JS -->
+                <p style="text-align: center; color: var(--text-dim); padding: 20px;">Loading active wallets...</p>
               </div>
             </div>
           </div>
@@ -596,6 +848,10 @@
                   <label>Snipe Amount (SOL)</label>
                   <input id="main_sol_amount" type="number" step="0.01" min="0"/>
                 </div>
+                <div class="field">
+                  <label>Manual Amount (SOL)</label>
+                  <input id="main_manual_sol_amount" type="number" step="0.01" min="0"/>
+                </div>
               </div>
               <div class="field">
                 <label>Private Key (Base58)</label>
@@ -621,56 +877,105 @@
           </div>
         </div>
 
-
-
         <!-- ── Guide View ── -->
         <div id="view-guide" class="view">
           <div class="card">
             <div class="guide-container" id="guide-content">
               Loading documentation...
             </div>
-          </div>
-          </div>
-        </main>
-
-        <!-- ── Persistent Logs Panel ── -->
-        <div class="persistent-logs">
-          <div class="terminal-header">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <div style="display: flex; gap: 6px;">
-                <div style="width: 10px; height: 10px; border-radius: 50%; background: #ff5f56"></div>
-                <div style="width: 10px; height: 10px; border-radius: 50%; background: #ffbd2e"></div>
-                <div style="width: 10px; height: 10px; border-radius: 50%; background: #27c93f"></div>
-              </div>
-              <div style="font-size: 0.65rem; font-weight: 800; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase;">Live Log Stream</div>
-            </div>
-            <button class="btn btn-outline btn-sm" onclick="clearLogs()" style="padding: 2px 10px; font-size: 0.6rem; border-radius: 4px;">CLEAR LOGS</button>
-          </div>
-          <div class="terminal-body" id="log-body">
-            <div class="log-line info">Awaiting log stream connection...</div>
-          </div>
         </div>
-      </div>
+      </main>
+
+      <!-- ── Persistent Logs Panel (Right Side) ── -->
+      <aside class="persistent-logs">
+        <div class="terminal-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="display: flex; gap: 6px;">
+              <div style="width: 10px; height: 10px; border-radius: 50%; background: #ff5f56"></div>
+              <div style="width: 10px; height: 10px; border-radius: 50%; background: #ffbd2e"></div>
+              <div style="width: 10px; height: 10px; border-radius: 50%; background: #27c93f"></div>
+            </div>
+            <div style="font-size: 0.65rem; font-weight: 800; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase;">Live Log Stream</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="clearLogs()" style="padding: 2px 10px; font-size: 0.6rem; border-radius: 4px;">CLEAR LOGS</button>
+        </div>
+        <div class="terminal-body" id="log-body">
+          <div class="log-line info">Awaiting log stream connection...</div>
+        </div>
+      </aside>
     </div>
+  </div>
 
   <div class="toast" id="toast">✅ Action Successful</div>
 
   <script>
     // ── Navigation ──────────────────────────────────────────────────
-    function switchView(viewId, el) {
-      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-      document.getElementById('view-' + viewId).classList.add('active');
-      
-      document.querySelectorAll('.nav-item').forEach(v => v.classList.remove('active'));
+    function switchView(viewName, el) {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
       el.classList.add('active');
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById('view-' + viewName).classList.add('active');
+      
+      if(viewName === 'guide') loadGuide();
+      if(viewName === 'manual') updateManualWalletList();
+    }
 
-      if(viewId === 'guide') loadGuide();
+    function toggleSidebar() {
+      const sb = document.getElementById('sidebar');
+      sb.classList.toggle('collapsed');
+      localStorage.setItem('sidebarCollapsed', sb.classList.contains('collapsed'));
+    }
+
+    // Restore sidebar state
+    if(localStorage.getItem('sidebarCollapsed') === 'true') {
+      document.getElementById('sidebar').classList.add('collapsed');
+    }
+
+    function switchSubTab(env, el) {
+      document.querySelectorAll('.sub-tab').forEach(i => i.classList.remove('active'));
+      el.classList.add('active');
+      document.querySelectorAll('.sub-view').forEach(v => v.classList.remove('active'));
+      document.getElementById('profile-' + env).classList.add('active');
+    }
+
+    function updateManualWalletList() {
+        const container = document.getElementById('manual-wallet-list');
+        const wallets = bundleWallets || [];
+        if(wallets.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: var(--text-dim); padding: 20px;">No sub-wallets configured. Go to Wallets tab to add some.</p>';
+            return;
+        }
+
+        container.innerHTML = wallets.map((w, idx) => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 32px; height: 32px; background: var(--bg-card); display: flex; align-items: center; justify-content: center; border-radius: 8px; font-weight: 800; font-size: 0.8rem; border: 1px solid rgba(255,255,255,0.1); color: var(--accent2);">
+                        ${idx}
+                    </div>
+                    <div>
+                        <div style="font-weight: 700; font-size: 0.9rem;">${w.label || 'Sub-Wallet ' + idx}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-dim); font-family: monospace;">${w.pubkey || 'Unchecked'}</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div style="text-align: right;">
+                        <div style="font-size: 0.8rem; font-weight: 800; color: var(--accent);">${w.sol_amount || 0} SOL</div>
+                        <div style="font-size: 0.6rem; color: var(--text-dim);">SNIPE AMOUNT</div>
+                    </div>
+                    <div class="stat-dot ${w.enabled ? 'green' : 'red'}" title="${w.enabled ? 'Enabled' : 'Disabled'}"></div>
+                </div>
+            </div>
+        `).join('');
     }
 
     // ── State ──────────────────────────────────────────────────────────
+    let mainWallet = { label: 'Main Wallet', private_key: '', sol_amount: 0.05, manual_sol_amount: 0.1, enabled: true };
     let bundleWallets = [];
+    let cfg_slidefun_pump_amount = 0.05;
     let targetMints = [];
+    let targetMintsDevnet = [];
     let targetCreators = [];
+    let targetCreatorsDevnet = [];
     let botActive = false;
 
     // ── Bot State Toggle ──────────────────────────────────────────────
@@ -721,8 +1026,18 @@
         document.getElementById('jito_tip').value = cfg.jito_tip ?? 0.003;
         document.getElementById('cu_limit').value = cfg.cu_limit ?? 200000;
         document.getElementById('priority_fee').value = cfg.priority_fee ?? 100000;
-        document.getElementById('slidefun_pump_amount').value = cfg.slidefun_pump_amount ?? 0.05;
-        document.getElementById('slidefun_program').value = cfg.slidefun_program || '';
+        cfg_slidefun_pump_amount = cfg.slidefun_pump_amount || 0.05;
+        document.getElementById('slidefun_program_mainnet').value = cfg.slidefun_program_mainnet || '';
+        document.getElementById('slidefun_program_devnet').value = cfg.slidefun_program_devnet || '';
+        document.getElementById('raydium_program_mainnet').value = cfg.raydium_program_mainnet || '';
+        document.getElementById('raydium_program_devnet').value = cfg.raydium_program_devnet || '';
+        
+        document.getElementById('mainnet_rpc').value = cfg.mainnet_rpc || '';
+        document.getElementById('mainnet_ws').value = cfg.mainnet_ws || '';
+        document.getElementById('devnet_rpc').value = cfg.devnet_rpc || '';
+        document.getElementById('devnet_ws').value = cfg.devnet_ws || '';
+        document.getElementById('jito_region').value = cfg.jito_region || 'ny';
+
         document.getElementById('auto_snipe_all').checked = cfg.auto_snipe_all ?? false;
         document.getElementById('dry_run').checked = cfg.dry_run ?? true;
         document.getElementById('test_mode').checked = cfg.test_mode ?? false;
@@ -731,15 +1046,27 @@
         setModeBtn(cfg.snipe_mode || 'raydium');
 
         targetMints = cfg.target_mints || [];
-        renderMints();
+        targetMintsDevnet = cfg.target_mints_devnet || [];
+        renderMints('mainnet');
+        renderMints('devnet');
 
         targetCreators = cfg.target_creators || [];
-        renderCreators();
+        targetCreatorsDevnet = cfg.target_creators_devnet || [];
+        renderCreators('mainnet');
+        renderCreators('devnet');
 
         const mw = cfg.main_wallet || {};
-        document.getElementById('main_label').value = mw.label || 'Main Wallet';
-        document.getElementById('main_pk').value = mw.private_key || '';
-        document.getElementById('main_sol_amount').value = mw.sol_amount ?? 0.1;
+        mainWallet = {
+          label: mw.label || 'Main Wallet',
+          private_key: mw.private_key || '',
+          sol_amount: mw.sol_amount || 0.05,
+          manual_sol_amount: mw.manual_sol_amount || 0.1,
+          enabled: true
+        };
+        document.getElementById('main_label').value = mainWallet.label;
+        document.getElementById('main_sol_amount').value = mainWallet.sol_amount;
+        document.getElementById('main_manual_sol_amount').value = mainWallet.manual_sol_amount;
+        document.getElementById('main_pk').value = mainWallet.private_key;
         if (mw.pubkey) {
           document.getElementById('main_pubkey_display').textContent = mw.pubkey;
         } else {
@@ -748,6 +1075,7 @@
 
         bundleWallets = cfg.bundle_wallets || [];
         renderWallets();
+        renderManualWallets();
         updateHeaderBadge(cfg.dry_run, cfg.snipe_mode);
         document.getElementById('network-display').textContent = `SOLANA ${(cfg.network || 'mainnet').toUpperCase()} v0.2.0`;
 
@@ -761,22 +1089,41 @@
         jito_tip: parseFloat(document.getElementById('jito_tip').value),
         cu_limit: parseInt(document.getElementById('cu_limit').value),
         priority_fee: parseInt(document.getElementById('priority_fee').value),
-        slidefun_pump_amount: parseFloat(document.getElementById('slidefun_pump_amount').value),
-        slidefun_program: document.getElementById('slidefun_program').value,
+        slidefun_pump_amount: cfg_slidefun_pump_amount,
+        slidefun_program_mainnet: document.getElementById('slidefun_program_mainnet').value,
+        slidefun_program_devnet: document.getElementById('slidefun_program_devnet').value,
+        raydium_program_mainnet: document.getElementById('raydium_program_mainnet').value,
+        raydium_program_devnet: document.getElementById('raydium_program_devnet').value,
+        
+        mainnet_rpc: document.getElementById('mainnet_rpc').value,
+        mainnet_ws: document.getElementById('mainnet_ws').value,
+        devnet_rpc: document.getElementById('devnet_rpc').value,
+        devnet_ws: document.getElementById('devnet_ws').value,
+        jito_region: document.getElementById('jito_region').value,
+
         auto_snipe_all: document.getElementById('auto_snipe_all').checked,
         dry_run: document.getElementById('dry_run').checked,
         test_mode: document.getElementById('test_mode').checked,
         snipe_mode: document.getElementById('snipe_mode').value,
         target_mints: targetMints,
+        target_mints_devnet: targetMintsDevnet,
         target_creators: targetCreators,
+        target_creators_devnet: targetCreatorsDevnet,
         main_wallet: {
           label: document.getElementById('main_label').value,
           private_key: document.getElementById('main_pk').value,
           sol_amount: parseFloat(document.getElementById('main_sol_amount').value),
+          manual_sol_amount: parseFloat(document.getElementById('main_manual_sol_amount').value),
           enabled: true
         },
         bundle_wallets: bundleWallets
       };
+
+      // Sync mainWallet data from DOM before saving
+      mainWallet.label = document.getElementById('main_label').value;
+      mainWallet.sol_amount = parseFloat(document.getElementById('main_sol_amount').value);
+      mainWallet.manual_sol_amount = parseFloat(document.getElementById('main_manual_sol_amount').value);
+      renderManualWallets();
 
       try {
         const res = await fetch('/api/config', {
@@ -793,37 +1140,55 @@
     }
 
     // ── Render Helpers ──────────────────────────────────────────────
-    function renderMints(){
-      const container = document.getElementById('mints-container');
+    function renderMints(env = 'mainnet'){
+      const containerId = env === 'devnet' ? 'mints-container-devnet' : 'mints-container';
+      const list = env === 'devnet' ? targetMintsDevnet : targetMints;
+      const container = document.getElementById(containerId);
+      if(!container) return;
       container.innerHTML = '';
-      targetMints.forEach((m,i) => {
+      list.forEach((m,i) => {
         const div = document.createElement('div');
         div.className = 'mint-item';
         div.innerHTML = `
-          <input value="${esc(m)}" oninput="targetMints[${i}]=this.value" placeholder="Mint Address..."/>
-          <button class="btn btn-danger btn-sm" onclick="removeMint(${i})">✕</button>
+          <input value="${esc(m)}" oninput="${env === 'devnet' ? 'targetMintsDevnet' : 'targetMints'}[${i}]=this.value" placeholder="Mint Address..."/>
+          <button class="btn btn-danger btn-sm" onclick="removeMint(${i}, '${env}')">✕</button>
         `;
         container.appendChild(div);
       });
     }
-    function addMint(){ targetMints.push(''); renderMints(); }
-    function removeMint(i){ targetMints.splice(i,1); renderMints(); }
+    function addMint(env = 'mainnet'){
+      if(env === 'devnet') targetMintsDevnet.push(''); else targetMints.push('');
+      renderMints(env);
+    }
+    function removeMint(i, env = 'mainnet'){
+      if(env === 'devnet') targetMintsDevnet.splice(i,1); else targetMints.splice(i,1);
+      renderMints(env);
+    }
 
-    function renderCreators(){
-      const container = document.getElementById('creators-container');
+    function renderCreators(env = 'mainnet'){
+      const containerId = env === 'devnet' ? 'creators-container-devnet' : 'creators-container';
+      const list = env === 'devnet' ? targetCreatorsDevnet : targetCreators;
+      const container = document.getElementById(containerId);
+      if(!container) return;
       container.innerHTML = '';
-      targetCreators.forEach((c,i) => {
+      list.forEach((c,i) => {
         const div = document.createElement('div');
         div.className = 'mint-item';
         div.innerHTML = `
-          <input value="${esc(c)}" oninput="targetCreators[${i}]=this.value" placeholder="Creator Address..."/>
-          <button class="btn btn-danger btn-sm" onclick="removeCreator(${i})">✕</button>
+          <input value="${esc(c)}" oninput="${env === 'devnet' ? 'targetCreatorsDevnet' : 'targetCreators'}[${i}]=this.value" placeholder="Creator Address..."/>
+          <button class="btn btn-danger btn-sm" onclick="removeCreator(${i}, '${env}')">✕</button>
         `;
         container.appendChild(div);
       });
     }
-    function addCreator(){ targetCreators.push(''); renderCreators(); }
-    function removeCreator(i){ targetCreators.splice(i,1); renderCreators(); }
+    function addCreator(env = 'mainnet'){
+      if(env === 'devnet') targetCreatorsDevnet.push(''); else targetCreators.push('');
+      renderCreators(env);
+    }
+    function removeCreator(i, env = 'mainnet'){
+      if(env === 'devnet') targetCreatorsDevnet.splice(i,1); else targetCreators.splice(i,1);
+      renderCreators(env);
+    }
 
     function renderWallets(){
       const container = document.getElementById('wallet-list-container');
@@ -835,7 +1200,7 @@
         div.innerHTML = `
           <div class="wallet-header">
             <div class="wallet-status">
-              <label class="switch"><input type="checkbox" ${w.enabled?'checked':''} onchange="bundleWallets[${i}].enabled=this.checked"/><span class="slider"></span></label>
+              <label class="switch"><input type="checkbox" ${w.enabled?'checked':''} onchange="bundleWallets[${i}].enabled=this.checked; renderManualWallets();"/><span class="slider"></span></label>
               SUB-WALLET #${i+1}
               ${w.pubkey ? `<span style="font-size: 0.65rem; font-family: monospace; color: var(--accent2); background: rgba(0,212,170,0.1); padding: 2px 6px; border-radius: 4px; margin-left: 10px;">${w.pubkey}</span>` : ''}
             </div>
@@ -847,8 +1212,12 @@
               <input value="${esc(w.label)}" oninput="bundleWallets[${i}].label=this.value"/>
             </div>
             <div class="field">
-              <label>SOL Amount</label>
-              <input type="number" step="0.01" value="${w.sol_amount}" oninput="bundleWallets[${i}].sol_amount=parseFloat(this.value)"/>
+              <label>Snipe Amount (SOL)</label>
+              <input type="number" step="0.01" min="0" value="${w.sol_amount || 0.05}" oninput="bundleWallets[${i}].sol_amount=parseFloat(this.value)"/>
+            </div>
+            <div class="field">
+              <label>Manual Amount (SOL)</label>
+              <input type="number" step="0.01" min="0" value="${w.manual_sol_amount || 0.1}" oninput="bundleWallets[${i}].manual_sol_amount=parseFloat(this.value)"/>
             </div>
           </div>
           <div class="field" style="margin-top: 10px;">
@@ -864,10 +1233,50 @@
       });
     }
     function addWallet(){
-      bundleWallets.push({label:`Sub-wallet ${bundleWallets.length+1}`,private_key:'',sol_amount:0.05,enabled:true});
+      bundleWallets.push({label:`Sub-wallet ${bundleWallets.length+1}`,private_key:'',sol_amount:0.05,manual_sol_amount:0.1,enabled:true});
       renderWallets();
+      renderManualWallets();
     }
-    function removeWallet(i){ bundleWallets.splice(i,1); renderWallets(); }
+    function removeWallet(i){ bundleWallets.splice(i,1); renderWallets(); renderManualWallets(); }
+
+    function renderManualWallets(){
+      const container = document.getElementById('manual-wallet-list');
+      if(!container) return;
+      container.innerHTML = '';
+      
+      // Main Wallet first
+      const mainDiv = document.createElement('div');
+      mainDiv.className = 'manual-wallet-item';
+      mainDiv.innerHTML = `
+        <div class="manual-wallet-info">
+          <span class="badge badge-purple">MAIN</span>
+          <span class="manual-wallet-label">${esc(mainWallet.label)}</span>
+        </div>
+        <div class="manual-wallet-action">
+          <label>Buy Amount (SOL)</label>
+          <input type="number" id="manual_amount_main" step="0.01" min="0" value="${mainWallet.manual_sol_amount || 0.1}"/>
+        </div>
+      `;
+      container.appendChild(mainDiv);
+
+      // Enabled Sub-Wallets
+      bundleWallets.forEach((w, i) => {
+        if(!w.enabled) return;
+        const div = document.createElement('div');
+        div.className = 'manual-wallet-item';
+        div.innerHTML = `
+          <div class="manual-wallet-info">
+            <span class="badge">SUB #${i+1}</span>
+            <span class="manual-wallet-label">${esc(w.label)}</span>
+          </div>
+          <div class="manual-wallet-action">
+            <label>Buy Amount (SOL)</label>
+            <input type="number" class="manual-sub-amount" data-index="${i}" step="0.01" min="0" value="${w.manual_sol_amount || 0.1}"/>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
     function esc(s){ return (s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
     // ── Snipe mode buttons ────────────────────────────────────────────
@@ -949,36 +1358,53 @@
     }
 
     // ── Manual Actions ────────────────────────────────────────────
-    async function manualBuy() {
-      const mint = document.getElementById('manual_mint').value.trim();
-      const sol = parseFloat(document.getElementById('manual_sol').value);
+    async function manualBundleAction(action, inputId = 'manual_mint') {
+      const mint = document.getElementById(inputId).value.trim();
       if(!mint) { showToast('❌ Enter mint address', true); return; }
-      try {
-        const res = await fetch('/api/manual-buy', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ mint, sol_per_wallet: sol })
-        });
-        const data = await res.json();
-        if(res.ok) showToast('🚀 ' + data.message);
-        else showToast('❌ ' + data.error, true);
-      } catch(e) { showToast('❌ Network error', true); }
-    }
 
-    async function manualSell() {
-      const mint = document.getElementById('manual_mint').value.trim();
-      const percent = parseFloat(document.getElementById('manual_percent').value);
-      if(!mint) { showToast('❌ Enter mint address', true); return; }
+      const payload = { action, mint };
+      
+      if(action.includes('buy')) {
+        const amounts = [];
+        // Get main wallet amount
+        amounts.push({ 
+          label: 'main', 
+          amount: parseFloat(document.getElementById('manual_amount_main').value) 
+        });
+
+        // Get sub-wallets amounts
+        document.querySelectorAll('.manual-sub-amount').forEach(input => {
+          amounts.push({
+            index: parseInt(input.dataset.index),
+            amount: parseFloat(input.value)
+          });
+        });
+        payload.wallet_amounts = amounts;
+      }
+
+      if(action === 'raydium_sell' || action === 'slidefun_sell') {
+        let selectId = 'sell_percent';
+        if(inputId === 'manual_mint_v2') {
+          selectId = action === 'slidefun_sell' ? 'sell_percent_sf' : 'sell_percent_v2';
+        }
+        payload.percent = parseFloat(document.getElementById(selectId).value);
+      }
+
       try {
-        const res = await fetch('/api/manual-sell', {
+        const res = await fetch('/api/manual-bundle', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ mint, percent })
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if(res.ok) showToast('💸 ' + data.message);
-        else showToast('❌ ' + data.error, true);
-      } catch(e) { showToast('❌ Network error', true); }
+        if(res.ok) {
+          showToast('🚀 Bundle ' + action + ' started');
+        } else {
+          showToast('❌ ' + data.error, true);
+        }
+      } catch(e) {
+        showToast('❌ Network error', true);
+      }
     }
 
     async function validateKey(inputId, statusId) {
@@ -1006,7 +1432,25 @@
         }
       } catch(e) {
         statusEl.textContent = '❌ Connection error';
-        statusEl.style.color = 'var(--red)';
+      }
+    }
+
+    async function restartEngine() {
+      if(!confirm('Are you sure you want to force restart the sniper engine? This will drop current WebSocket connections and reload all configurations.')) return;
+      
+      showToast('🔄 Restarting engine...');
+      try {
+        const res = await fetch('/api/restart', { method: 'POST' });
+        if(res.ok) {
+          showToast('✅ Restart command sent. Reconnecting in 3s...');
+          setTimeout(() => location.reload(), 3000);
+        } else {
+          showToast('❌ Restart failed', true);
+        }
+      } catch(e) {
+        // If the server shuts down immediately, this might catch an error, which is expected
+        showToast('✅ Shutdown triggered. Reconnecting...', false);
+        setTimeout(() => location.reload(), 5000);
       }
     }
 

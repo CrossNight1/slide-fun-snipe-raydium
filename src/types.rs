@@ -4,10 +4,10 @@ use solana_sdk::pubkey::Pubkey;
 #[derive(Debug, Clone)]
 pub struct PoolInfo {
     pub amm_id: Pubkey,
-    pub base_mint: Pubkey,       // Token mint (from Slide.fun)
+    pub base_mint: Pubkey, // Token mint (from Slide.fun)
     /// SPL Token or Token-2022 — must match on-chain mint owner for ATAs + Raydium swap.
     pub base_token_program: Pubkey,
-    pub quote_mint: Pubkey,      // WSOL
+    pub quote_mint: Pubkey, // WSOL
     pub lp_mint: Pubkey,
     pub base_vault: Pubkey,
     pub quote_vault: Pubkey,
@@ -24,5 +24,3 @@ pub struct PoolInfo {
     pub pool_sol_amount: u64,
     pub open_time: u64,
 }
-
-

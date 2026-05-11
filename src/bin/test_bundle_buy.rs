@@ -29,21 +29,20 @@ use solana_sdk::{
     transaction::VersionedTransaction,
 };
 use spl_associated_token_account::{
-    get_associated_token_address,
-    instruction::create_associated_token_account_idempotent,
+    get_associated_token_address, instruction::create_associated_token_account_idempotent,
 };
 use std::str::FromStr;
 use std::sync::Arc;
 
 // ── Inline constants ──────────────────────────────────────────────────
-const SLIDEFUN_PROGRAM:    &str = "GkF6F9GNPjzkC18Xa3a88xwEc5vwyQDA1iXvFkKBqNDC";
-const TOKEN_PROGRAM:       &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const WSOL_MINT:           &str = "So11111111111111111111111111111111111111112";
-const JITO_TIP_ADDRESS:    &str = "96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5";
-const ASSOC_TOKEN_PGM:     &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
-const SF_BUY_DISC:   [u8; 8]   = [102, 6, 61, 18, 1, 218, 235, 234];
-const SF_CONFIG:     &[u8]     = b"config";
-const SF_BC:         &[u8]     = b"bonding_curve";
+const SLIDEFUN_PROGRAM: &str = "GkF6F9GNPjzkC18Xa3a88xwEc5vwyQDA1iXvFkKBqNDC";
+const TOKEN_PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const WSOL_MINT: &str = "So11111111111111111111111111111111111111112";
+const JITO_TIP_ADDRESS: &str = "96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5";
+const ASSOC_TOKEN_PGM: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+const SF_BUY_DISC: [u8; 8] = [102, 6, 61, 18, 1, 218, 235, 234];
+const SF_CONFIG: &[u8] = b"config";
+const SF_BC: &[u8] = b"bonding_curve";
 const JITO_URLS: &[&str] = &[
     "https://ny.mainnet.block-engine.jito.wtf/api/v1/bundles",
     "https://amsterdam.mainnet.block-engine.jito.wtf/api/v1/bundles",
@@ -53,8 +52,7 @@ const JITO_URLS: &[&str] = &[
 // ─────────────────────────────────────────────────────────────────────
 
 fn load_wallets(path: &str) -> Vec<Keypair> {
-    let content = std::fs::read_to_string(path)
-        .unwrap_or_else(|_| "[]".to_string());
+    let content = std::fs::read_to_string(path).unwrap_or_else(|_| "[]".to_string());
     let json: serde_json::Value = serde_json::from_str(&content).unwrap_or(serde_json::json!([]));
     let mut kps = Vec::new();
     if let Some(arr) = json.as_array() {
@@ -69,18 +67,23 @@ fn load_wallets(path: &str) -> Vec<Keypair> {
     kps
 }
 
-fn sf_buy_ix(user: &Pubkey, token_mint: &Pubkey, fee_to: &Pubkey, sol_lamports: u64) -> Instruction {
-    let prog  = Pubkey::from_str(SLIDEFUN_PROGRAM).unwrap();
+fn sf_buy_ix(
+    user: &Pubkey,
+    token_mint: &Pubkey,
+    fee_to: &Pubkey,
+    sol_lamports: u64,
+) -> Instruction {
+    let prog = Pubkey::from_str(SLIDEFUN_PROGRAM).unwrap();
     let tok_p = Pubkey::from_str(TOKEN_PROGRAM).unwrap();
     let assoc = Pubkey::from_str(ASSOC_TOKEN_PGM).unwrap();
-    let wsol  = Pubkey::from_str(WSOL_MINT).unwrap();
+    let wsol = Pubkey::from_str(WSOL_MINT).unwrap();
 
     let (cfg, _) = Pubkey::find_program_address(&[SF_CONFIG], &prog);
-    let (bc,  _) = Pubkey::find_program_address(&[SF_BC, token_mint.as_ref()], &prog);
-    let bc_tok  = get_associated_token_address(&bc, token_mint);
-    let bc_pay  = get_associated_token_address(&bc, &wsol);
-    let u_tok   = get_associated_token_address(user, token_mint);
-    let u_pay   = get_associated_token_address(user, &wsol);
+    let (bc, _) = Pubkey::find_program_address(&[SF_BC, token_mint.as_ref()], &prog);
+    let bc_tok = get_associated_token_address(&bc, token_mint);
+    let bc_pay = get_associated_token_address(&bc, &wsol);
+    let u_tok = get_associated_token_address(user, token_mint);
+    let u_pay = get_associated_token_address(user, &wsol);
     let fee_ata = get_associated_token_address(fee_to, &wsol);
 
     let mut data = SF_BUY_DISC.to_vec();
@@ -118,9 +121,9 @@ fn build_buy_tx(
     priority_fee: u64,
     blockhash: Hash,
 ) -> Option<VersionedTransaction> {
-    let user      = keypair.pubkey();
-    let wsol      = Pubkey::from_str(WSOL_MINT).unwrap();
-    let tok_p     = Pubkey::from_str(TOKEN_PROGRAM).unwrap();
+    let user = keypair.pubkey();
+    let wsol = Pubkey::from_str(WSOL_MINT).unwrap();
+    let tok_p = Pubkey::from_str(TOKEN_PROGRAM).unwrap();
     let user_wsol = get_associated_token_address(&user, &wsol);
 
     let ixs = vec![
@@ -140,52 +143,75 @@ fn build_buy_tx(
     match Message::try_compile(&user, &ixs, &[], blockhash) {
         Ok(msg) => match VersionedTransaction::try_new(VersionedMessage::V0(msg), &[keypair]) {
             Ok(tx) => Some(tx),
-            Err(e) => { println!("    Sign error: {}", e); None }
+            Err(e) => {
+                println!("    Sign error: {}", e);
+                None
+            }
         },
-        Err(e) => { println!("    Compile error: {}", e); None }
+        Err(e) => {
+            println!("    Compile error: {}", e);
+            None
+        }
     }
 }
 
-fn build_tip_tx(main_kp: &Keypair, tip_lamports: u64, blockhash: Hash) -> Option<VersionedTransaction> {
+fn build_tip_tx(
+    main_kp: &Keypair,
+    tip_lamports: u64,
+    blockhash: Hash,
+) -> Option<VersionedTransaction> {
     let user = main_kp.pubkey();
     let jito = Pubkey::from_str(JITO_TIP_ADDRESS).unwrap();
-    let ixs  = vec![
+    let ixs = vec![
         ComputeBudgetInstruction::set_compute_unit_limit(3_000),
         system_instruction::transfer(&user, &jito, tip_lamports),
     ];
     match Message::try_compile(&user, &ixs, &[], blockhash) {
         Ok(msg) => match VersionedTransaction::try_new(VersionedMessage::V0(msg), &[main_kp]) {
             Ok(tx) => Some(tx),
-            Err(e) => { println!("  Tip TX sign error: {}", e); None }
+            Err(e) => {
+                println!("  Tip TX sign error: {}", e);
+                None
+            }
         },
-        Err(e) => { println!("  Tip TX compile error: {}", e); None }
+        Err(e) => {
+            println!("  Tip TX compile error: {}", e);
+            None
+        }
     }
 }
 
 async fn send_bundle(bundle: Vec<String>) {
     let client = reqwest::Client::new();
-    let handles: Vec<_> = JITO_URLS.iter().map(|url| {
-        let client = client.clone();
-        let url = url.to_string();
-        let bundle = bundle.clone();
-        tokio::spawn(async move {
-            let payload = serde_json::json!({
-                "jsonrpc": "2.0", "id": 1,
-                "method": "sendBundle", "params": [bundle]
-            });
-            match client.post(&url).json(&payload).send().await {
-                Ok(resp) => {
-                    let body: serde_json::Value = resp.json().await.unwrap_or_default();
-                    if let Some(id) = body["result"].as_str() {
-                        println!("  [JITO {}] Bundle ID: {}", url.split('/').nth(2).unwrap_or("?"), id);
-                    } else {
-                        println!("  [JITO] Error: {:?}", body["error"]);
+    let handles: Vec<_> = JITO_URLS
+        .iter()
+        .map(|url| {
+            let client = client.clone();
+            let url = url.to_string();
+            let bundle = bundle.clone();
+            tokio::spawn(async move {
+                let payload = serde_json::json!({
+                    "jsonrpc": "2.0", "id": 1,
+                    "method": "sendBundle", "params": [bundle]
+                });
+                match client.post(&url).json(&payload).send().await {
+                    Ok(resp) => {
+                        let body: serde_json::Value = resp.json().await.unwrap_or_default();
+                        if let Some(id) = body["result"].as_str() {
+                            println!(
+                                "  [JITO {}] Bundle ID: {}",
+                                url.split('/').nth(2).unwrap_or("?"),
+                                id
+                            );
+                        } else {
+                            println!("  [JITO] Error: {:?}", body["error"]);
+                        }
                     }
+                    Err(e) => println!("  [JITO] Request error: {}", e),
                 }
-                Err(e) => println!("  [JITO] Request error: {}", e),
-            }
+            })
         })
-    }).collect();
+        .collect();
     futures::future::join_all(handles).await;
 }
 
@@ -196,37 +222,53 @@ async fn main() {
     let force_live = std::env::args().any(|a| a == "live");
 
     // Load config
-    let private_key   = std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY missing in .env");
-    let helius_key    = std::env::var("HELIUS_API_KEY").expect("HELIUS_API_KEY missing in .env");
-    let dry_run       = if force_live { false } else {
+    let private_key = std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY missing in .env");
+    let helius_key = std::env::var("HELIUS_API_KEY").expect("HELIUS_API_KEY missing in .env");
+    let dry_run = if force_live {
+        false
+    } else {
         std::env::var("DRY_RUN").unwrap_or("true".into()) != "false"
     };
     let sol_per_wallet: f64 = std::env::var("BUNDLE_SOL_PER_WALLET")
-        .ok().and_then(|v| v.parse().ok()).unwrap_or(0.01);
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.01);
     let jito_tip: f64 = std::env::var("JITO_TIP")
-        .ok().and_then(|v| v.parse().ok()).unwrap_or(0.001);
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.001);
     let cu_limit: u32 = std::env::var("CU_LIMIT")
-        .ok().and_then(|v| v.parse().ok()).unwrap_or(200_000);
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(200_000);
     let priority_fee: u64 = std::env::var("PRIORITY_FEE")
-        .ok().and_then(|v| v.parse().ok()).unwrap_or(100_000);
-    let wallets_file  = std::env::var("BUNDLE_WALLETS_FILE")
-        .unwrap_or("wallets.json".into());
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100_000);
+    let wallets_file = std::env::var("BUNDLE_WALLETS_FILE").unwrap_or("wallets.json".into());
 
     let main_kp = Keypair::from_base58_string(&private_key);
     let rpc_url = format!("https://mainnet.helius-rpc.com/?api-key={}", helius_key);
-    let rpc     = Arc::new(RpcClient::new(rpc_url));
+    let rpc = Arc::new(RpcClient::new(rpc_url));
 
     // Real token mint + fee_to for live test
     let token_mint = Pubkey::from_str("8mEucFjUZ6SkSGsaFVYxsqxNbXk9p1Rw81Yv3a8QmcmE").unwrap();
-    let fee_to     = Pubkey::from_str("GCDcDJEW25W4sNUdzC1YNr9ojbi1Cwof5AbVd2qTxA7A").unwrap();
+    let fee_to = Pubkey::from_str("GCDcDJEW25W4sNUdzC1YNr9ojbi1Cwof5AbVd2qTxA7A").unwrap();
 
-    let sol_lamports  = (sol_per_wallet * LAMPORTS_PER_SOL as f64) as u64;
-    let tip_lamports  = (jito_tip * LAMPORTS_PER_SOL as f64) as u64;
+    let sol_lamports = (sol_per_wallet * LAMPORTS_PER_SOL as f64) as u64;
+    let tip_lamports = (jito_tip * LAMPORTS_PER_SOL as f64) as u64;
 
     println!("\n╔══════════════════════════════════════════════════════╗");
     println!("║         BUNDLE BUY TEST — Slide.fun mode            ║");
     println!("╚══════════════════════════════════════════════════════╝");
-    println!("  Mode        : {}", if dry_run { "DRY RUN (no TX sent)" } else { "⚡ LIVE (real SOL!)" });
+    println!(
+        "  Mode        : {}",
+        if dry_run {
+            "DRY RUN (no TX sent)"
+        } else {
+            "⚡ LIVE (real SOL!)"
+        }
+    );
     println!("  Main wallet : {}", main_kp.pubkey());
     println!("  Token mint  : {} (fake for dry run)", token_mint);
     println!("  SOL/wallet  : {} SOL", sol_per_wallet);
@@ -244,15 +286,29 @@ async fn main() {
 
     // Get blockhash
     let blockhash = match rpc.get_latest_blockhash().await {
-        Ok(bh) => { println!("  [OK] Blockhash: {}\n", bh); bh }
-        Err(e) => { println!("  [ERR] Blockhash fetch failed: {}", e); Hash::default() }
+        Ok(bh) => {
+            println!("  [OK] Blockhash: {}\n", bh);
+            bh
+        }
+        Err(e) => {
+            println!("  [ERR] Blockhash fetch failed: {}", e);
+            Hash::default()
+        }
     };
 
     // Build all buy TXs
     println!("  Building buy TXs:");
     let mut buy_txs: Vec<VersionedTransaction> = Vec::new();
     for (i, kp) in wallets.iter().enumerate() {
-        match build_buy_tx(kp, &token_mint, &fee_to, sol_lamports, cu_limit, priority_fee, blockhash) {
+        match build_buy_tx(
+            kp,
+            &token_mint,
+            &fee_to,
+            sol_lamports,
+            cu_limit,
+            priority_fee,
+            blockhash,
+        ) {
             Some(tx) => {
                 let size = bincode::serialize(&tx).unwrap_or_default().len();
                 println!("    wallet[{:>2}] {} → {} bytes ✅", i, kp.pubkey(), size);
@@ -268,7 +324,10 @@ async fn main() {
     for (b_idx, chunk) in buy_txs.chunks(4).enumerate() {
         let tip_tx = match build_tip_tx(&main_kp, tip_lamports, blockhash) {
             Some(tx) => tx,
-            None => { println!("    Bundle {} — tip TX failed, skipping", b_idx); continue; }
+            None => {
+                println!("    Bundle {} — tip TX failed, skipping", b_idx);
+                continue;
+            }
         };
 
         let mut bundle: Vec<String> = Vec::new();
@@ -280,12 +339,20 @@ async fn main() {
                 bundle.push(bs58::encode(&b).into_string());
             }
         }
-        println!("    Bundle {} → {} TXs (tip + {} buys)", b_idx, bundle.len(), bundle.len() - 1);
+        println!(
+            "    Bundle {} → {} TXs (tip + {} buys)",
+            b_idx,
+            bundle.len(),
+            bundle.len() - 1
+        );
         bundles.push(bundle);
     }
 
-    println!("\n  Total: {} bundles × 4 Jito endpoints = {} requests\n",
-        bundles.len(), bundles.len() * 4);
+    println!(
+        "\n  Total: {} bundles × 4 Jito endpoints = {} requests\n",
+        bundles.len(),
+        bundles.len() * 4
+    );
 
     if dry_run {
         println!("  ✅ DRY RUN complete — all TXs built successfully, NOT sent.");

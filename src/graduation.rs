@@ -32,11 +32,7 @@ use tokio::time::{sleep, Duration};
 /// Pre-create the ATA for a graduating token.
 /// Called as soon as we detect `migrate` — before the Raydium pool exists.
 /// This removes 1 instruction (~20ms) from the critical swap TX.
-pub async fn pre_create_ata(
-    rpc_client: &RpcClient,
-    keypair: &Keypair,
-    token_mint: &str,
-) {
+pub async fn pre_create_ata(rpc_client: &RpcClient, keypair: &Keypair, token_mint: &str) {
     let token_mint_pk = match Pubkey::from_str(token_mint) {
         Ok(pk) => pk,
         Err(_) => return,
@@ -81,11 +77,17 @@ pub async fn pre_create_ata(
     };
 
     log_info!("[GRAD] Pre-creating ATA for {}...", token_mint);
-    match rpc_client.send_transaction_with_config(&tx, RpcSendTransactionConfig {
-        skip_preflight: true,
-        max_retries: Some(3),
-        ..Default::default()
-    }).await {
+    match rpc_client
+        .send_transaction_with_config(
+            &tx,
+            RpcSendTransactionConfig {
+                skip_preflight: true,
+                max_retries: Some(3),
+                ..Default::default()
+            },
+        )
+        .await
+    {
         Ok(sig) => log_info!("[GRAD] ✅ ATA pre-created: {}", sig),
         Err(e) => log_info!("[GRAD] ATA pre-create failed (may exist): {}", e),
     }
@@ -121,7 +123,10 @@ pub async fn extract_graduating_token(
     };
 
     for attempt in 0..5 {
-        match rpc_client.get_transaction_with_config(&sig, config.clone()).await {
+        match rpc_client
+            .get_transaction_with_config(&sig, config.clone())
+            .await
+        {
             Ok(tx) => {
                 if let Some(decoded) = tx.transaction.transaction.decode() {
                     let message = &decoded.message;
@@ -165,7 +170,7 @@ pub async fn extract_graduating_token(
                         // Verified: migrate instruction account layout (IDL lines 556-738):
                         // [0] migration_authority (writable, signer)
                         // [1] config PDA
-                        // [2] bonding_curve PDA  
+                        // [2] bonding_curve PDA
                         // [3] token              ← TOKEN MINT ✅
                         // [4] payment (WSOL)
                         // [5] bonding_curve_token_ata
@@ -200,6 +205,5 @@ pub async fn extract_graduating_token(
 /// Must be from Slide.fun program AND contain Anchor migrate log
 pub fn is_graduation_signal(logs: &[String], program_id_str: &str) -> bool {
     let logs_str = logs.join(" ");
-    logs_str.contains(program_id_str)
-        && logs_str.contains("Instruction: Migrate")
+    logs_str.contains(program_id_str) && logs_str.contains("Instruction: Migrate")
 }
