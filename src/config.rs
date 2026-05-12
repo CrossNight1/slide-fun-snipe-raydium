@@ -62,6 +62,10 @@ pub struct AppConfig {
     #[serde(default = "default_jito_region")]
     pub jito_region: String,
     #[serde(default)]
+    pub raydium_add_pool_wallet: Option<String>,
+    #[serde(default)]
+    pub raydium_add_pool_wallet_devnet: Option<String>,
+    #[serde(default)]
     pub listen_creator: bool,
     #[serde(default)]
     pub auto_snipe_all: bool,
@@ -97,6 +101,8 @@ impl Default for AppConfig {
             devnet_rpc: None,
             devnet_ws: None,
             jito_region: "ny".to_string(),
+            raydium_add_pool_wallet: None,
+            raydium_add_pool_wallet_devnet: None,
             listen_creator: false,
             auto_snipe_all: false,
             target_mints: vec![],
@@ -175,6 +181,8 @@ impl AppConfig {
             devnet_rpc: env::var("DEVNET_RPC").ok().filter(|v| !v.is_empty()),
             devnet_ws: env::var("DEVNET_WS").ok().filter(|v| !v.is_empty()),
             jito_region: env::var("JITO_REGION").unwrap_or_else(|_| "ny".to_string()),
+            raydium_add_pool_wallet: env::var("RAYDIUM_ADD_POOL_WALLET").ok().filter(|v| !v.is_empty()),
+            raydium_add_pool_wallet_devnet: env::var("RAYDIUM_ADD_POOL_WALLET_DEVNET").ok().filter(|v| !v.is_empty()),
             listen_creator: parse_bool(
                 &env::var("LISTEN_CREATOR").unwrap_or_else(|_| "false".to_string()),
             ),
@@ -435,6 +443,15 @@ impl Config {
     /// Get Slide.fun pump amount.
     pub fn slidefun_pump_amount(&self) -> f64 {
         self.app.slidefun_pump_amount
+    }
+
+    /// Get Raydium Add Pool Wallet based on network
+    pub fn raydium_add_pool_wallet(&self) -> Option<String> {
+        if self.network.to_lowercase() == "devnet" {
+            self.app.raydium_add_pool_wallet_devnet.clone()
+        } else {
+            self.app.raydium_add_pool_wallet.clone()
+        }
     }
 }
 

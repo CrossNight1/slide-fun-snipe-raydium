@@ -99,9 +99,15 @@ pub async fn run(
                     .await
                     .unwrap();
 
+                let raydium_target = if let Some(wallet) = config.raydium_add_pool_wallet() {
+                    wallet
+                } else {
+                    amm_program.to_string()
+                };
+
                 let (mut stream_raydium, _unsub_ray) = pubsub
                     .logs_subscribe(
-                        RpcTransactionLogsFilter::Mentions(vec![amm_program.to_string()]),
+                        RpcTransactionLogsFilter::Mentions(vec![raydium_target.clone()]),
                         RpcTransactionLogsConfig {
                             commitment: Some(CommitmentConfig::processed()),
                         },
@@ -111,7 +117,7 @@ pub async fn run(
 
                 log_info!("[OK] ✅ Dual-listener active:");
                 log_info!("   [A] Slide.fun : {}", slidefun_program);
-                log_info!("   [B] Raydium V4: {}", amm_program);
+                log_info!("   [B] Raydium/Wallet: {}", raydium_target);
                 log_info!(
                     "   [C] Slidefun-create snipe: {}",
                     if enable_slidefun_create {
@@ -308,19 +314,22 @@ pub async fn run(
                             }
                         }
 
-                        // ── LISTENER B: Raydium AMM V4 ───────────────────────
+                        // ── LISTENER B: Raydium AMM V4 / Add Pool Wallet ───────────────────────
                         Some(("raydium", log)) => {
                             let logs_str = log.value.logs.join(" ");
-                            let is_init = logs_str.contains(&format!("{} invoke", amm_program_str))
-                                && (logs_str.contains("initialize2:")
-                                    || logs_str.contains("Initialize2"));
+                            let signature = log.value.signature.clone();
+
+                            let is_init = logs_str.contains("initialize2:") 
+                                || logs_str.contains("Initialize2")
+                                || logs_str.contains("Instruction: Initialize");
 
                             if !is_init {
+                                // Optional: uncomment if you want to see ALL transactions from this wallet
+                                // log_info!("[DEBUG] Wallet TX (non-init): {}", signature);
                                 continue;
                             }
 
-                            let signature = log.value.signature.clone();
-                            log_info!("[RAYDIUM] New AMM V4 pool detected: {}", signature);
+                            log_info!("[RAYDIUM] New AMM V4 pool detected via wallet/logs: {}", signature);
 
                             let rpc_c = rpc_client.clone();
                             let cfg_c = config.clone();
@@ -333,9 +342,21 @@ pub async fn run(
                                 match get_pool_info(&rpc_c, &signature, cfg_c.raydium_program()).await {
                                     Some(pool_info) => {
                                         let token_key = pool_info.base_mint.to_string();
+                                        let pool_creator = pool_info.creator.to_string();
 
-                                        // Raydium listener: snipe ALL new pools.
-                                        // Creator tracking only applies to Slide.fun listings.
+                                        // Check wallet if auto_snipe_all is false
+                                        if !cfg_c.app.auto_snipe_all {
+                                            if let Some(add_wallet) = cfg_c.raydium_add_pool_wallet() {
+                                                if !add_wallet.is_empty() && pool_creator != add_wallet {
+                                                    log_info!(
+                                                        "   [SKIP] Creator {} != target wallet {}. Skipping...",
+                                                        pool_creator, add_wallet
+                                                    );
+                                                    return;
+                                                }
+                                            }
+                                        }
+
                                         // Dedup only — avoid double-buying the same pool.
                                         {
                                             let mut s = sniped_c.lock().await;

@@ -31,7 +31,7 @@
     background: var(--bg);
     color: var(--text);
     font-family: 'Plus Jakarta Sans', sans-serif;
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     overflow: hidden;
   }
@@ -680,6 +680,11 @@
               </div>
 
               <div class="field" style="margin-bottom: 20px;">
+                <label>Raydium Add Pool Wallet (Slide Fun Add Pool Wallet)</label>
+                <input id="raydium_add_pool_wallet" type="text" placeholder="6tWPpDBAVTNwzfUeNR4pGT3bbcmXKQruGBMv1anV3ecq"/>
+              </div>
+
+              <div class="field" style="margin-bottom: 20px;">
                 <label>Jito Block Engine Region</label>
                 <select id="jito_region">
                   <option value="ny">New York</option>
@@ -732,6 +737,11 @@
                   <label>WebSocket URL (Devnet)</label>
                   <input id="devnet_ws" type="text" placeholder="wss://devnet.helius-rpc.com/..."/>
                 </div>
+              </div>
+
+              <div class="field" style="margin-bottom: 20px;">
+                <label>Raydium Add Pool Wallet (Slide Fun Add Pool Wallet - Devnet)</label>
+                <input id="raydium_add_pool_wallet_devnet" type="text" placeholder="6tWPpDBAVTNwzfUeNR4pGT3bbcmXKQruGBMv1anV3ecq"/>
               </div>
 
               <div style="margin-top: 24px;">
@@ -917,7 +927,7 @@
       document.getElementById('view-' + viewName).classList.add('active');
       
       if(viewName === 'guide') loadGuide();
-      if(viewName === 'manual') updateManualWalletList();
+      if(viewName === 'manual') renderManualWallets();
     }
 
     function toggleSidebar() {
@@ -938,35 +948,6 @@
       document.getElementById('profile-' + env).classList.add('active');
     }
 
-    function updateManualWalletList() {
-        const container = document.getElementById('manual-wallet-list');
-        const wallets = bundleWallets || [];
-        if(wallets.length === 0) {
-            container.innerHTML = '<p style="text-align: center; color: var(--text-dim); padding: 20px;">No sub-wallets configured. Go to Wallets tab to add some.</p>';
-            return;
-        }
-
-        container.innerHTML = wallets.map((w, idx) => `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="width: 32px; height: 32px; background: var(--bg-card); display: flex; align-items: center; justify-content: center; border-radius: 8px; font-weight: 800; font-size: 0.8rem; border: 1px solid rgba(255,255,255,0.1); color: var(--accent2);">
-                        ${idx}
-                    </div>
-                    <div>
-                        <div style="font-weight: 700; font-size: 0.9rem;">${w.label || 'Sub-Wallet ' + idx}</div>
-                        <div style="font-size: 0.7rem; color: var(--text-dim); font-family: monospace;">${w.pubkey || 'Unchecked'}</div>
-                    </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <div style="text-align: right;">
-                        <div style="font-size: 0.8rem; font-weight: 800; color: var(--accent);">${w.sol_amount || 0} SOL</div>
-                        <div style="font-size: 0.6rem; color: var(--text-dim);">SNIPE AMOUNT</div>
-                    </div>
-                    <div class="stat-dot ${w.enabled ? 'green' : 'red'}" title="${w.enabled ? 'Enabled' : 'Disabled'}"></div>
-                </div>
-            </div>
-        `).join('');
-    }
 
     // ── State ──────────────────────────────────────────────────────────
     let mainWallet = { label: 'Main Wallet', private_key: '', sol_amount: 0.05, manual_sol_amount: 0.1, enabled: true };
@@ -1037,6 +1018,8 @@
         document.getElementById('devnet_rpc').value = cfg.devnet_rpc || '';
         document.getElementById('devnet_ws').value = cfg.devnet_ws || '';
         document.getElementById('jito_region').value = cfg.jito_region || 'ny';
+        document.getElementById('raydium_add_pool_wallet').value = cfg.raydium_add_pool_wallet || '';
+        document.getElementById('raydium_add_pool_wallet_devnet').value = cfg.raydium_add_pool_wallet_devnet || '';
 
         document.getElementById('auto_snipe_all').checked = cfg.auto_snipe_all ?? false;
         document.getElementById('dry_run').checked = cfg.dry_run ?? true;
@@ -1100,6 +1083,8 @@
         devnet_rpc: document.getElementById('devnet_rpc').value,
         devnet_ws: document.getElementById('devnet_ws').value,
         jito_region: document.getElementById('jito_region').value,
+        raydium_add_pool_wallet: document.getElementById('raydium_add_pool_wallet').value,
+        raydium_add_pool_wallet_devnet: document.getElementById('raydium_add_pool_wallet_devnet').value,
 
         auto_snipe_all: document.getElementById('auto_snipe_all').checked,
         dry_run: document.getElementById('dry_run').checked,
@@ -1246,15 +1231,23 @@
       
       // Main Wallet first
       const mainDiv = document.createElement('div');
-      mainDiv.className = 'manual-wallet-item';
+      mainDiv.style = "display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 10px;";
       mainDiv.innerHTML = `
-        <div class="manual-wallet-info">
-          <span class="badge badge-purple">MAIN</span>
-          <span class="manual-wallet-label">${esc(mainWallet.label)}</span>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 32px; height: 32px; background: var(--bg-card); display: flex; align-items: center; justify-content: center; border-radius: 8px; font-weight: 800; font-size: 0.8rem; border: 1px solid rgba(255,255,255,0.1); color: var(--accent2);">
+                ★
+            </div>
+            <div>
+                <div style="font-weight: 700; font-size: 0.9rem;">${esc(mainWallet.label || 'Main Wallet')}</div>
+                <div style="font-size: 0.7rem; color: var(--text-dim); font-family: monospace;">MAIN</div>
+            </div>
         </div>
-        <div class="manual-wallet-action">
-          <label>Buy Amount (SOL)</label>
-          <input type="number" id="manual_amount_main" step="0.01" min="0" value="${mainWallet.manual_sol_amount || 0.1}"/>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="text-align: right;">
+                <input type="number" id="manual_amount_main" step="0.01" min="0" value="${mainWallet.manual_sol_amount || 0.1}" oninput="mainWallet.manual_sol_amount=parseFloat(this.value); document.getElementById('main_manual_sol_amount').value=this.value" style="width: 80px; padding: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-weight: 800; text-align: right;"/>
+                <div style="font-size: 0.6rem; color: var(--text-dim); margin-top: 4px;">BUY AMOUNT (SOL)</div>
+            </div>
+            <div class="stat-dot green" title="Enabled"></div>
         </div>
       `;
       container.appendChild(mainDiv);
@@ -1263,16 +1256,24 @@
       bundleWallets.forEach((w, i) => {
         if(!w.enabled) return;
         const div = document.createElement('div');
-        div.className = 'manual-wallet-item';
+        div.style = "display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 10px;";
         div.innerHTML = `
-          <div class="manual-wallet-info">
-            <span class="badge">SUB #${i+1}</span>
-            <span class="manual-wallet-label">${esc(w.label)}</span>
-          </div>
-          <div class="manual-wallet-action">
-            <label>Buy Amount (SOL)</label>
-            <input type="number" class="manual-sub-amount" data-index="${i}" step="0.01" min="0" value="${w.manual_sol_amount || 0.1}"/>
-          </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 32px; height: 32px; background: var(--bg-card); display: flex; align-items: center; justify-content: center; border-radius: 8px; font-weight: 800; font-size: 0.8rem; border: 1px solid rgba(255,255,255,0.1); color: var(--accent2);">
+                    ${i + 1}
+                </div>
+                <div>
+                    <div style="font-weight: 700; font-size: 0.9rem;">${esc(w.label || 'Sub-Wallet ' + (i+1))}</div>
+                    <div style="font-size: 0.7rem; color: var(--text-dim); font-family: monospace;">${w.pubkey || 'Unchecked'}</div>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="text-align: right;">
+                    <input type="number" class="manual-sub-amount" data-index="${i}" step="0.01" min="0" value="${w.manual_sol_amount || 0.1}" oninput="bundleWallets[${i}].manual_sol_amount=parseFloat(this.value)" style="width: 80px; padding: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-weight: 800; text-align: right;"/>
+                    <div style="font-size: 0.6rem; color: var(--text-dim); margin-top: 4px;">BUY AMOUNT (SOL)</div>
+                </div>
+                <div class="stat-dot green" title="Enabled"></div>
+            </div>
         `;
         container.appendChild(div);
       });

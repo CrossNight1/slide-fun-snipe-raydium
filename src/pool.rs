@@ -144,6 +144,8 @@ async fn build_pool_info_from_accounts(
     rpc_client: &RpcClient,
     accounts: &[Pubkey],
     data: &[u8],
+    creator: Pubkey,
+    amm_program: Pubkey,
 ) -> Option<PoolInfo> {
     let debug = std::env::var("DEBUG_POOL_PARSE").ok().as_deref() == Some("1");
     if debug {
@@ -168,6 +170,7 @@ async fn build_pool_info_from_accounts(
     }
 
     let amm_id = accounts[4];
+    let amm_authority = accounts[5];
     let open_orders = accounts[6];
     let lp_mint = accounts[7];
     let base_mint = accounts[8];
@@ -266,7 +269,9 @@ async fn build_pool_info_from_accounts(
     };
 
     Some(PoolInfo {
+        amm_program_id: amm_program,
         amm_id,
+        amm_authority,
         base_mint: token_mint,
         base_token_program,
         quote_mint: wsol,
@@ -285,6 +290,7 @@ async fn build_pool_info_from_accounts(
         market_vault_signer,
         pool_sol_amount,
         open_time,
+        creator,
     })
 }
 
@@ -358,7 +364,7 @@ pub async fn get_pool_info(rpc_client: &RpcClient, signature: &str, amm_program:
                             continue;
                         }
                         if let Some(p) =
-                            build_pool_info_from_accounts(rpc_client, &accounts, &ix.data).await
+                            build_pool_info_from_accounts(rpc_client, &accounts, &ix.data, all_account_keys[0], amm_program).await
                         {
                             return Some(p);
                         }
@@ -402,9 +408,8 @@ pub async fn get_pool_info(rpc_client: &RpcClient, signature: &str, amm_program:
                                                 continue;
                                             }
                                             if let Some(p) = build_pool_info_from_accounts(
-                                                rpc_client, &accounts, &data,
-                                            )
-                                            .await
+                                                rpc_client, &accounts, &data, all_account_keys[0], amm_program
+                                            ).await
                                             {
                                                 return Some(p);
                                             }
@@ -435,9 +440,8 @@ pub async fn get_pool_info(rpc_client: &RpcClient, signature: &str, amm_program:
                                                 accounts.push(pk);
                                             }
                                             if let Some(p) = build_pool_info_from_accounts(
-                                                rpc_client, &accounts, &data,
-                                            )
-                                            .await
+                                                rpc_client, &accounts, &data, all_account_keys[0], amm_program
+                                            ).await
                                             {
                                                 return Some(p);
                                             }
@@ -555,7 +559,7 @@ pub async fn find_pool_by_mint(rpc_client: &RpcClient, mint: &Pubkey, amm_progra
             .get_signatures_for_address_with_config(
                 amm_id,
                 GetConfirmedSignaturesForAddress2Config {
-                    limit: Some(5),
+                    limit: Some(50),
                     ..Default::default()
                 },
             )

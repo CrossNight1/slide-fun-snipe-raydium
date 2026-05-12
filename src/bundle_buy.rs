@@ -492,7 +492,15 @@ pub async fn raydium_bundle_buy(
                 let rpc_c = rpc.clone();
                 let tx_c = tx.clone();
                 tokio::spawn(async move {
-                    let _ = rpc_c.send_transaction(&tx_c).await;
+                    let config_rpc = solana_client::rpc_config::RpcSendTransactionConfig {
+                        skip_preflight: true,
+                        max_retries: Some(0),
+                        ..Default::default()
+                    };
+                    match rpc_c.send_transaction_with_config(&tx_c, config_rpc).await {
+                        Ok(sig) => log_info!("[BUNDLE] Devnet TX OK: {}", sig),
+                        Err(e) => log_info!("[BUNDLE] Devnet TX Error: {:?}", e),
+                    }
                 });
             }
             log_info!("[BUNDLE] Waiting {}s for transactions to land...", CONFIRM_WAIT_SECS);
@@ -689,6 +697,21 @@ pub async fn raydium_bundle_sell(
         return;
     }
 
+    if config.network.to_lowercase() == "devnet" {
+        for tx in sell_txs.into_iter() {
+            match rpc.send_transaction_with_config(&tx, solana_client::rpc_config::RpcSendTransactionConfig {
+                skip_preflight: true,
+                max_retries: Some(0),
+                ..Default::default()
+            }).await {
+                Ok(sig) => log_info!("[BUNDLE] Devnet Raydium SELL OK: {}", sig),
+                Err(e) => log_info!("[BUNDLE] Devnet Raydium SELL Error: {:?}", e),
+            }
+        }
+        log_info!("[BUNDLE] ✅ Done");
+        return;
+    }
+
     let jito_tip_lamports = (config.jito_tip * LAMPORTS_PER_SOL as f64) as u64;
     let bundles = pack_into_bundles(&sell_txs, &config.keypair, jito_tip_lamports, blockhash);
 
@@ -780,7 +803,15 @@ pub async fn slidefun_bundle_buy(
                 let rpc_c = rpc.clone();
                 let tx_c = tx.clone();
                 tokio::spawn(async move {
-                    let _ = rpc_c.send_transaction(&tx_c).await;
+                    let config_rpc = solana_client::rpc_config::RpcSendTransactionConfig {
+                        skip_preflight: true,
+                        max_retries: Some(0),
+                        ..Default::default()
+                    };
+                    match rpc_c.send_transaction_with_config(&tx_c, config_rpc).await {
+                        Ok(sig) => log_info!("[BUNDLE] Devnet SF TX OK: {}", sig),
+                        Err(e) => log_info!("[BUNDLE] Devnet SF TX Error: {:?}", e),
+                    }
                 });
             }
             log_info!("[BUNDLE] Waiting {}s for transactions to land...", CONFIRM_WAIT_SECS);
@@ -965,6 +996,21 @@ pub async fn slidefun_bundle_sell(
 
     if sell_txs.is_empty() {
         log_info!("[BUNDLE] ⚠️  No wallets have tokens to sell.");
+        return;
+    }
+
+    if config.network.to_lowercase() == "devnet" {
+        for tx in sell_txs.into_iter() {
+            match rpc.send_transaction_with_config(&tx, solana_client::rpc_config::RpcSendTransactionConfig {
+                skip_preflight: true,
+                max_retries: Some(0),
+                ..Default::default()
+            }).await {
+                Ok(sig) => log_info!("[BUNDLE] Devnet SF SELL OK: {}", sig),
+                Err(e) => log_info!("[BUNDLE] Devnet SF SELL Error: {:?}", e),
+            }
+        }
+        log_info!("[BUNDLE] ✅ Done");
         return;
     }
 

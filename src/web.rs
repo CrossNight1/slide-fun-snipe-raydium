@@ -298,6 +298,28 @@ async fn save_config(Json(incoming): Json<Value>) -> impl IntoResponse {
             changes.push(format!("Raydium Devnet Program -> {}", v));
         }
     }
+    if let Some(v) = incoming["raydium_add_pool_wallet"].as_str() {
+        let v_trimmed = v.trim();
+        if existing.raydium_add_pool_wallet.as_deref() != Some(v_trimmed) {
+            existing.raydium_add_pool_wallet = if v_trimmed.is_empty() {
+                None
+            } else {
+                Some(v_trimmed.to_string())
+            };
+            changes.push(format!("Raydium Add Pool Wallet -> {}", v_trimmed));
+        }
+    }
+    if let Some(v) = incoming["raydium_add_pool_wallet_devnet"].as_str() {
+        let v_trimmed = v.trim();
+        if existing.raydium_add_pool_wallet_devnet.as_deref() != Some(v_trimmed) {
+            existing.raydium_add_pool_wallet_devnet = if v_trimmed.is_empty() {
+                None
+            } else {
+                Some(v_trimmed.to_string())
+            };
+            changes.push(format!("Raydium Devnet Add Pool Wallet -> {}", v_trimmed));
+        }
+    }
     if let Some(v) = incoming["mainnet_rpc"].as_str() {
         if Some(v.to_string()) != existing.mainnet_rpc {
             existing.mainnet_rpc = if v.is_empty() {

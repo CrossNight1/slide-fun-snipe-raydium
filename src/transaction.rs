@@ -145,8 +145,8 @@ pub fn build_swap_instruction(
     min_amount_out: u64,
     token_program: Pubkey,
 ) -> Instruction {
-    let raydium_program = Pubkey::from_str(raydium_amm_program()).unwrap();
-    let raydium_authority = Pubkey::from_str(raydium_authority()).unwrap();
+    let raydium_program = pool_info.amm_program_id;
+    let raydium_authority = pool_info.amm_authority;
 
     let accounts = vec![
         AccountMeta::new_readonly(token_program, false),

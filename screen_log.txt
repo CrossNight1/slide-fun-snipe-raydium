@@ -1,0 +1,58 @@
+[2026-05-04 19:37:38.606] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:38.848] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:39.096] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:39.351] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:39.613] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:39.892] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:40.145] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:40.394] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:40.649] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:40.935] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:41.179] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:41.430] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:41.691] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:41.942] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:42.198] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:42.505] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:42.751] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:42.994] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:43.256] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:43.505] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:43.753] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:44.011] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:44.271] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:44.519] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:44.766] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:45.014] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:45.261] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+[2026-05-04 19:37:45.514] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
+us-rpc.com/?api-key=your_helius_api_key_here)
+./start.sh: line 62: 72089 Killed: 9               ./target/release/slidefun-raydium-snipe
+leoinv@Vos-MacBook-Air-2 ~/Documents/CODE/slide-fun-snipe-raydium $
