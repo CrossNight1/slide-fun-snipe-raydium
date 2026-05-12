@@ -26,6 +26,7 @@
 
 use crate::{constants, log_info};
 use crate::config::Config;
+use crate::trades::{Trade, TradesStore};
 use crate::transaction::send_bundle_to_url;
 use crate::types::PoolInfo;
 use bincode;
@@ -415,6 +416,7 @@ pub async fn raydium_bundle_buy(
     wallets: &[(Keypair, f64)],
     pool_info: Arc<PoolInfo>,
     blockhash: Hash,
+    trades: Arc<TradesStore>,
 ) {
     if wallets.is_empty() {
         log_info!("[BUNDLE] No bundle wallets loaded — skipping bundle buy");
@@ -485,42 +487,69 @@ pub async fn raydium_bundle_buy(
             break;
         }
 
-        // --- TARGET NETWORK FALLBACK ---
+        // --- TARGET NETWORK FALLBACK (Devnet: RPC direct, no Jito) ---
         if config.network.to_lowercase() == "devnet" {
             log_info!("[BUNDLE] Target Network: Devnet — sending individual TXs via RPC");
-            for tx in &buy_txs {
+            // Use a shared set so spawned tasks can mark wallets as done immediately
+            let sent_set: Arc<tokio::sync::Mutex<std::collections::HashSet<usize>>> =
+                Arc::new(tokio::sync::Mutex::new(std::collections::HashSet::new()));
+
+            let mut handles = Vec::new();
+            for (idx, tx) in buy_txs.iter().enumerate() {
                 let rpc_c = rpc.clone();
                 let tx_c = tx.clone();
-                tokio::spawn(async move {
+                let wi = pending[idx];
+                let trades_c = trades.clone();
+                let mint_c = pool_info.base_mint.to_string();
+                let sol_c = wallets[wi].1;
+                let wallet_c = wallets[wi].0.pubkey().to_string();
+                let network_c = config.network.clone();
+                let sent_c = sent_set.clone();
+                let h = tokio::spawn(async move {
                     let config_rpc = solana_client::rpc_config::RpcSendTransactionConfig {
                         skip_preflight: true,
                         max_retries: Some(0),
                         ..Default::default()
                     };
                     match rpc_c.send_transaction_with_config(&tx_c, config_rpc).await {
-                        Ok(sig) => log_info!("[BUNDLE] Devnet TX OK: {}", sig),
+                        Ok(sig) => {
+                            let cluster = if network_c.to_lowercase() == "devnet" { "?cluster=devnet" } else { "" };
+                            log_info!("[BUNDLE] Devnet TX OK: {}{}", sig, cluster);
+                            log_info!("   https://solscan.io/tx/{}{}", sig, cluster);
+                            // Mark this wallet as successfully sent — no retry needed
+                            sent_c.lock().await.insert(wi);
+                            // Record trade only once (on first successful send)
+                            trades_c.add_trade(Trade {
+                                id: sig.to_string(),
+                                timestamp: chrono::Utc::now(),
+                                mint: mint_c,
+                                mode: "raydium".to_string(),
+                                sol_amount: sol_c,
+                                token_amount: 0.0,
+                                status: "pending".to_string(),
+                                latency_ms: None,
+                                wallet: Some(wallet_c),
+                                wallet_type: Some("sub".to_string()),
+                            }).await;
+                        }
                         Err(e) => log_info!("[BUNDLE] Devnet TX Error: {:?}", e),
                     }
                 });
+                handles.push(h);
             }
             log_info!("[BUNDLE] Waiting {}s for transactions to land...", CONFIRM_WAIT_SECS);
+            // Wait for all spawned sends to complete
+            for h in handles { let _ = h.await; }
             tokio::time::sleep(tokio::time::Duration::from_secs(CONFIRM_WAIT_SECS)).await;
-            
-            // Confirm via signatures
-            for (idx, tx) in buy_txs.iter().enumerate() {
-                if let Some(sig) = tx.signatures.first() {
-                    let wi = pending[idx];
-                    match rpc.get_signature_status(sig).await {
-                        Ok(Some(Ok(()))) => {
-                            wallet_bought[wi] = true;
-                            log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (sig: {})", wi, sig_short(sig));
-                        }
-                        _ => {}
-                    }
-                }
+
+            // Mark as bought for any wallet whose send succeeded
+            for &wi in sent_set.lock().await.iter() {
+                wallet_bought[wi] = true;
+                log_info!("[BUNDLE] ✅ Wallet[{}] sent OK — marking done", wi);
             }
-            continue; 
+            continue;
         }
+
 
         let bundles = pack_into_bundles(&buy_txs, &config.keypair, jito_tip_lamports, current_bh);
         log_bundle_solscan_links(
@@ -729,6 +758,7 @@ pub async fn slidefun_bundle_buy(
     token_program: Pubkey,
     fee_to: &Pubkey,
     blockhash: Hash,
+    trades: Arc<TradesStore>,
 ) {
     if wallets.is_empty() {
         log_info!("[BUNDLE] No bundle wallets loaded — skipping bundle buy");
@@ -796,41 +826,66 @@ pub async fn slidefun_bundle_buy(
 
         if buy_txs.is_empty() { break; }
         
-        // --- TARGET NETWORK FALLBACK ---
+        // --- TARGET NETWORK FALLBACK (Devnet: RPC direct, no Jito) ---
         if config.network.to_lowercase() == "devnet" {
             log_info!("[BUNDLE] Target Network: Devnet — sending individual TXs via RPC");
-            for tx in &buy_txs {
+            let sent_set: Arc<tokio::sync::Mutex<std::collections::HashSet<usize>>> =
+                Arc::new(tokio::sync::Mutex::new(std::collections::HashSet::new()));
+
+            let mut handles = Vec::new();
+            for (idx, tx) in buy_txs.iter().enumerate() {
                 let rpc_c = rpc.clone();
                 let tx_c = tx.clone();
-                tokio::spawn(async move {
+                let wi = pending[idx];
+                let trades_c = trades.clone();
+                let mint_c = token_mint.to_string();
+                let sol_c = wallets[wi].1;
+                let wallet_c = wallets[wi].0.pubkey().to_string();
+                let network_c = config.network.clone();
+                let sent_c = sent_set.clone();
+                let h = tokio::spawn(async move {
                     let config_rpc = solana_client::rpc_config::RpcSendTransactionConfig {
                         skip_preflight: true,
                         max_retries: Some(0),
                         ..Default::default()
                     };
                     match rpc_c.send_transaction_with_config(&tx_c, config_rpc).await {
-                        Ok(sig) => log_info!("[BUNDLE] Devnet SF TX OK: {}", sig),
+                        Ok(sig) => {
+                            let cluster = if network_c.to_lowercase() == "devnet" { "?cluster=devnet" } else { "" };
+                            log_info!("[BUNDLE] Devnet SF TX OK: {}{}", sig, cluster);
+                            log_info!("   https://solscan.io/tx/{}{}", sig, cluster);
+                            // Mark wallet done — no retry
+                            sent_c.lock().await.insert(wi);
+                            // Record trade only once
+                            trades_c.add_trade(Trade {
+                                id: sig.to_string(),
+                                timestamp: chrono::Utc::now(),
+                                mint: mint_c,
+                                mode: "slidefun".to_string(),
+                                sol_amount: sol_c,
+                                token_amount: 0.0,
+                                status: "pending".to_string(),
+                                latency_ms: None,
+                                wallet: Some(wallet_c),
+                                wallet_type: Some("sub".to_string()),
+                            }).await;
+                        }
                         Err(e) => log_info!("[BUNDLE] Devnet SF TX Error: {:?}", e),
                     }
                 });
+                handles.push(h);
             }
             log_info!("[BUNDLE] Waiting {}s for transactions to land...", CONFIRM_WAIT_SECS);
+            for h in handles { let _ = h.await; }
             tokio::time::sleep(tokio::time::Duration::from_secs(CONFIRM_WAIT_SECS)).await;
-            
-            for (idx, tx) in buy_txs.iter().enumerate() {
-                if let Some(sig) = tx.signatures.first() {
-                    let wi = pending[idx];
-                    match rpc.get_signature_status(sig).await {
-                        Ok(Some(Ok(()))) => {
-                            wallet_bought[wi] = true;
-                            log_info!("[BUNDLE] ✅ Wallet[{}] confirmed bought (sig: {})", wi, sig_short(sig));
-                        }
-                        _ => {}
-                    }
-                }
+
+            for &wi in sent_set.lock().await.iter() {
+                wallet_bought[wi] = true;
+                log_info!("[BUNDLE] ✅ Wallet[{}] SF sent OK — marking done", wi);
             }
             continue;
         }
+
 
         let bundles = pack_into_bundles(&buy_txs, &config.keypair, jito_tip_lamports, current_bh);
         log_bundle_solscan_links(

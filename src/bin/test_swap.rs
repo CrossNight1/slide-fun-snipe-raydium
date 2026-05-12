@@ -97,7 +97,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Fire swap
     log!("[3/3] Firing swap (ata_pre_created=false)...");
-    handler::handle_buy(&config, rpc_client, pool_info, false).await;
+    let trades = slidefun_raydium_snipe::trades::TradesStore::new();
+    handler::handle_buy(&config, rpc_client, pool_info, false, trades, std::time::Instant::now()).await;
 
     println!("");
     println!("===========================================");

@@ -45,6 +45,6 @@ anyhow = "1"
 lazy_static = "1"
 
 # Timestamp
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 
 base64 = "0.22.1"

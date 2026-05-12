@@ -529,6 +529,9 @@
       <div class="nav-item" onclick="switchView('manual', this)">
         <span class="nav-icon">🚀</span> <span class="nav-text">Manual Execution</span>
       </div>
+      <div class="nav-item" onclick="switchView('trades', this)">
+        <span class="nav-icon">📊</span> <span class="nav-text">Trade History</span>
+      </div>
       <div class="nav-item" onclick="switchView('guide', this)">
         <span class="nav-icon">📖</span> <span class="nav-text">Terminology</span>
       </div>
@@ -555,6 +558,43 @@
 
       <div style="display: flex; flex: 1; overflow: hidden;">
         <main class="content">
+
+          <!-- ── Trade History View ── -->
+          <div id="view-trades" class="view">
+            <div class="card">
+              <div class="card-title">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="card-title-icon">📊</div> Trade History & Performance
+                </div>
+                <div style="display: flex; gap: 16px; align-items: center;">
+                  <div id="trade-stats" style="font-size: 0.8rem; font-weight: 700; color: var(--accent2);">
+                    Total Spent: 0.00 SOL
+                  </div>
+                  <button class="btn btn-sm btn-outline" onclick="clearTrades()" style="border-color: var(--red); color: var(--red); padding: 2px 8px; font-size: 0.7rem;">CLEAR HISTORY</button>
+                </div>
+              </div>
+              <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                  <thead>
+                    <tr style="text-align: left; border-bottom: 1px solid var(--border); color: var(--muted);">
+                      <th style="padding: 12px;">Time</th>
+                      <th style="padding: 12px;">Mode</th>
+                      <th style="padding: 12px;">Token</th>
+                      <th style="padding: 12px;">Wallet</th>
+                      <th style="padding: 12px;">SOL Spent</th>
+                      <th style="padding: 12px;">Status</th>
+                      <th style="padding: 12px;">Latency</th>
+                      <th style="padding: 12px;">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="trades-list">
+                    <tr><td colspan="6" style="padding: 40px; text-align: center; color: var(--muted);">No trades recorded yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
           <!-- ── Auto-Sniper Config View ── -->
         <div id="view-dashboard" class="view active">
           <div class="grid">
@@ -855,8 +895,12 @@
                   <input id="main_label" type="text" placeholder="Main Wallet"/>
                 </div>
                 <div class="field">
-                  <label>Snipe Amount (SOL)</label>
-                  <input id="main_sol_amount" type="number" step="0.01" min="0"/>
+                  <label>Raydium Snipe (SOL)</label>
+                  <input id="main_sol_amount" type="number" step="0.01" min="0" placeholder="0.10"/>
+                </div>
+                <div class="field">
+                  <label>Slide.fun Snipe (SOL)</label>
+                  <input id="main_slidefun_amount" type="number" step="0.01" min="0" placeholder="0.05"/>
                 </div>
                 <div class="field">
                   <label>Manual Amount (SOL)</label>
@@ -928,6 +972,7 @@
       
       if(viewName === 'guide') loadGuide();
       if(viewName === 'manual') renderManualWallets();
+      if(viewName === 'trades') loadTrades();
     }
 
     function toggleSidebar() {
@@ -1004,6 +1049,7 @@
 
         document.getElementById('helius_api_key').value = cfg.helius_api_key || '';
         document.getElementById('network').value = cfg.network || 'mainnet';
+        window.NETWORK = cfg.network || 'mainnet';
         document.getElementById('jito_tip').value = cfg.jito_tip ?? 0.003;
         document.getElementById('cu_limit').value = cfg.cu_limit ?? 200000;
         document.getElementById('priority_fee').value = cfg.priority_fee ?? 100000;
@@ -1048,6 +1094,8 @@
         };
         document.getElementById('main_label').value = mainWallet.label;
         document.getElementById('main_sol_amount').value = mainWallet.sol_amount;
+        document.getElementById('main_slidefun_amount').value = cfg.slidefun_pump_amount || 0.05;
+        cfg_slidefun_pump_amount = cfg.slidefun_pump_amount || 0.05;
         document.getElementById('main_manual_sol_amount').value = mainWallet.manual_sol_amount;
         document.getElementById('main_pk').value = mainWallet.private_key;
         if (mw.pubkey) {
@@ -1094,12 +1142,13 @@
         target_mints_devnet: targetMintsDevnet,
         target_creators: targetCreators,
         target_creators_devnet: targetCreatorsDevnet,
+        slidefun_pump_amount: parseFloat(document.getElementById('main_slidefun_amount').value) || cfg_slidefun_pump_amount,
         main_wallet: {
           label: document.getElementById('main_label').value,
           private_key: document.getElementById('main_pk').value,
           sol_amount: parseFloat(document.getElementById('main_sol_amount').value),
           manual_sol_amount: parseFloat(document.getElementById('main_manual_sol_amount').value),
-          enabled: true
+          enabled: true,
         },
         bundle_wallets: bundleWallets
       };
@@ -1197,8 +1246,12 @@
               <input value="${esc(w.label)}" oninput="bundleWallets[${i}].label=this.value"/>
             </div>
             <div class="field">
-              <label>Snipe Amount (SOL)</label>
+              <label>Raydium Snipe (SOL)</label>
               <input type="number" step="0.01" min="0" value="${w.sol_amount || 0.05}" oninput="bundleWallets[${i}].sol_amount=parseFloat(this.value)"/>
+            </div>
+            <div class="field">
+              <label>Slide.fun Snipe (SOL)</label>
+              <input type="number" step="0.01" min="0" value="${w.slidefun_sol_amount || w.sol_amount || 0.05}" oninput="bundleWallets[${i}].slidefun_sol_amount=parseFloat(this.value)"/>
             </div>
             <div class="field">
               <label>Manual Amount (SOL)</label>
@@ -1218,7 +1271,7 @@
       });
     }
     function addWallet(){
-      bundleWallets.push({label:`Sub-wallet ${bundleWallets.length+1}`,private_key:'',sol_amount:0.05,manual_sol_amount:0.1,enabled:true});
+      bundleWallets.push({label:`Sub-wallet ${bundleWallets.length+1}`,private_key:'',sol_amount:0.05,slidefun_sol_amount:0.05,manual_sol_amount:0.1,enabled:true});
       renderWallets();
       renderManualWallets();
     }
@@ -1462,6 +1515,69 @@
         const text = await res.text();
         content.innerHTML = marked.parse(text);
       } catch(e) { content.innerHTML = '<p>Error loading guide.</p>'; }
+    }
+
+    async function loadTrades() {
+      try {
+        const res = await fetch('/api/trades');
+        const trades = await res.json();
+        const list = document.getElementById('trades-list');
+        const stats = document.getElementById('trade-stats');
+        
+        if (trades.length === 0) {
+          list.innerHTML = '<tr><td colspan="8" style="padding: 40px; text-align: center; color: var(--muted);">No trades recorded yet.</td></tr>';
+          stats.innerText = 'Total Spent: 0.00 SOL';
+          return;
+        }
+
+        let totalSol = 0;
+        list.innerHTML = trades.map(t => {
+          totalSol += t.sol_amount;
+          const d = new Date(t.timestamp);
+          const timeStr = d.getHours().toString().padStart(2, '0') + ':' + 
+                          d.getMinutes().toString().padStart(2, '0') + ':' + 
+                          d.getSeconds().toString().padStart(2, '0') + '.' + 
+                          d.getMilliseconds().toString().padStart(3, '0');
+          const date = d.toLocaleDateString() + ' ' + timeStr;
+          const statusClass = t.status === 'success' ? 'green' : (t.status === 'pending' ? 'yellow' : 'red');
+          const latencyText = t.latency_ms !== null && t.latency_ms !== undefined ? t.latency_ms + ' ms' : '-';
+          return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
+              <td style="padding: 12px; color: var(--muted);">${date}</td>
+              <td style="padding: 12px;"><span class="badge" style="background: rgba(255,255,255,0.05); font-size: 0.65rem;">${t.mode.toUpperCase()}</span></td>
+              <td style="padding: 12px;"><code style="color: var(--accent2);">${t.mint.substring(0,8)}...</code></td>
+              <td style="padding: 12px;">
+                ${t.wallet ? `<span class="badge" style="background: rgba(255,255,255,0.05); font-size: 0.65rem;">${t.wallet_type ? t.wallet_type.toUpperCase() : ''}</span> <code style="font-size: 0.7rem; color: var(--muted);">${t.wallet.substring(0,6)}...</code>` : '-'}
+              </td>
+              <td style="padding: 12px; font-weight: 700;">${t.sol_amount.toFixed(3)} SOL</td>
+              <td style="padding: 12px;"><span style="color: var(--${statusClass}); font-weight: 800; font-size: 0.7rem;">● ${t.status.toUpperCase()}</span></td>
+              <td style="padding: 12px; font-family: monospace; color: var(--muted);">${latencyText}</td>
+              <td style="padding: 12px;">
+                <a href="https://solscan.io/tx/${t.id}${window.NETWORK==='devnet'?'?cluster=devnet':''}" target="_blank" class="btn btn-sm btn-outline" style="padding: 2px 8px; font-size: 0.6rem;">VIEW</a>
+              </td>
+            </tr>
+          `;
+        }).join('');
+        
+        stats.innerText = `Total Spent: ${totalSol.toFixed(3)} SOL`;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function clearTrades() {
+      if(!confirm('Are you sure you want to clear all trade history?')) return;
+      try {
+        const res = await fetch('/api/trades', { method: 'DELETE' });
+        if(res.ok) {
+          showToast('✅ Trade history cleared.');
+          loadTrades();
+        } else {
+          showToast('❌ Failed to clear trades', true);
+        }
+      } catch(e) {
+        showToast('❌ Connection error', true);
+      }
     }
 
     // ── Init ──────────────────────────────────────────────────────────

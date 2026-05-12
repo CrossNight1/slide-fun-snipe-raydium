@@ -7,5 +7,6 @@ pub mod handler;
 pub mod logger;
 pub mod pool;
 pub mod slidefun_snipe;
+pub mod trades;
 pub mod transaction;
 pub mod types;

@@ -4,7 +4,7 @@
 
 use crate::{
     blockhash::get_blockhash, config::Config, constants::WSOL_MINT, log_info,
-    transaction::build_swap_instruction, types::PoolInfo,
+    trades::{Trade, TradesStore}, transaction::build_swap_instruction, types::PoolInfo,
 };
 use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
 #[allow(deprecated)]
@@ -29,6 +29,8 @@ pub async fn handle_buy(
     rpc_client: Arc<RpcClient>,
     pool_info: PoolInfo,
     ata_pre_created: bool,
+    trades: Arc<TradesStore>,
+    event_time: std::time::Instant,
 ) {
     log_info!("\n[SNIPE] 🎯 SLIDE-FUN GRADUATED TOKEN DETECTED ON RAYDIUM!");
     log_info!("   AMM ID: {}", pool_info.amm_id);
@@ -166,6 +168,11 @@ pub async fn handle_buy(
         let rpc_clone = rpc_client.clone();
         let attempt_num = attempt;
         let tx_clone = transaction.clone();
+        let trades_c = trades.clone();
+        let mint_c = pool_info.base_mint.to_string();
+        let sol_c = config.sol_amount;
+        let network_c = config.network.clone();
+        let wallet_c = config.keypair.pubkey().to_string();
         // Fill-first mode: always skip preflight for maximum speed.
         let skip_pf = true;
         tokio::spawn(async move {
@@ -182,7 +189,32 @@ pub async fn handle_buy(
             {
                 Ok(sig) => {
                     log_info!("[OK] RPC #{} sent: {}", attempt_num, sig);
-                    log_info!("   https://solscan.io/tx/{}", sig);
+                    let cluster_suffix = if network_c.to_lowercase() == "devnet" { "?cluster=devnet" } else { "" };
+                    log_info!("   https://solscan.io/tx/{}{}", sig, cluster_suffix);
+
+                    // Only record once — on first successful attempt (same sig for all retries)
+                    if attempt_num == 1 {
+                        let latency = event_time.elapsed().as_millis() as u64;
+                        let t_store = trades_c.clone();
+                        let t_sig = sig.to_string();
+                        let t_mint = mint_c.clone();
+                        let t_sol = sol_c;
+                        let t_wallet = wallet_c.clone();
+                        tokio::spawn(async move {
+                            t_store.add_trade(Trade {
+                                id: t_sig,
+                                timestamp: chrono::Utc::now(),
+                                mint: t_mint,
+                                mode: "raydium".to_string(),
+                                sol_amount: t_sol,
+                                token_amount: 0.0,
+                                status: "pending".to_string(),
+                                latency_ms: Some(latency),
+                                wallet: Some(t_wallet),
+                                wallet_type: Some("main".to_string()),
+                            }).await;
+                        });
+                    }
                 }
                 Err(e) => {
                     log_info!("[WARN] RPC #{} error: {}", attempt_num, e);

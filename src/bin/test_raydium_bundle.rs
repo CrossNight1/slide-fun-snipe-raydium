@@ -240,7 +240,8 @@ async fn main() {
             );
         } else {
             let pool_arc = Arc::new(pool_info);
-            bundle_buy::raydium_bundle_buy(&config, &wallets, pool_arc, bh).await;
+            let dummy_trades = slidefun_raydium_snipe::trades::TradesStore::new();
+            bundle_buy::raydium_bundle_buy(&config, &wallets, pool_arc, bh, dummy_trades).await;
         }
     }
 

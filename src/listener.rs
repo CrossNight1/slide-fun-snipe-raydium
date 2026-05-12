@@ -32,28 +32,31 @@ use tokio::{
 
 use crate::{
     blockhash::get_blockhash, bundle_buy, config::Config, graduation, handler::handle_buy,
-    log_info, pool::get_pool_info, slidefun_snipe,
+    log_info, pool::get_pool_info, slidefun_snipe, trades::TradesStore,
 };
 
 /// Shared state passed into the listener loop.
 pub struct ListenerState {
     /// Tokens detected as graduating from Slide.fun (migrate step seen)
     pub graduating_tokens: Arc<Mutex<HashSet<String>>>,
-    /// Tokens whose ATA has already been pre-created during the migrate step
-    pub ata_pre_created_tokens: Arc<Mutex<HashSet<String>>>,
-    /// Deduplication: tokens already sniped (avoids double-buying the same token)
-    pub sniped_tokens: Arc<Mutex<HashSet<String>>>,
     /// Tokens tracked from specific creators (listen_creator mode)
     pub creator_tracked_tokens: Arc<Mutex<HashSet<String>>>,
+    /// Tokens already sniped (to avoid double-buy)
+    pub sniped_tokens: Arc<Mutex<HashSet<String>>>,
+    /// ATA pre-created tokens
+    pub ata_pre_created_tokens: Arc<Mutex<HashSet<String>>>,
+    /// Persistent trade store
+    pub trades: Arc<TradesStore>,
 }
 
 impl ListenerState {
-    pub fn new() -> Self {
+    pub fn new(trades: Arc<TradesStore>) -> Self {
         Self {
             graduating_tokens: Arc::new(Mutex::new(HashSet::new())),
-            ata_pre_created_tokens: Arc::new(Mutex::new(HashSet::new())),
-            sniped_tokens: Arc::new(Mutex::new(HashSet::new())),
             creator_tracked_tokens: Arc::new(Mutex::new(HashSet::new())),
+            sniped_tokens: Arc::new(Mutex::new(HashSet::new())),
+            ata_pre_created_tokens: Arc::new(Mutex::new(HashSet::new())),
+            trades,
         }
     }
 }
@@ -63,8 +66,9 @@ pub async fn run(
     config: Arc<Config>,
     rpc_client: Arc<RpcClient>,
     bundle_wallets: Arc<Vec<(Keypair, f64)>>,
+    slidefun_wallets: Arc<Vec<(Keypair, f64)>>,
     ws_url: &str,
-    state: &ListenerState,
+    state: Arc<ListenerState>,
     bot_active: Arc<AtomicBool>,
 ) {
     let enable_slidefun_create = matches!(
@@ -171,14 +175,13 @@ pub async fn run(
                                 )
                             {
                                 let signature = log.value.signature.clone();
+                                let event_time = std::time::Instant::now();
                                 log_info!("[SFSNIPE] 🆕 New Slide.fun token! TX: {}", signature);
 
                                 let rpc_c = rpc_client.clone();
                                 let cfg_c = config.clone();
-                                let sniped_c = state.sniped_tokens.clone();
-                                let wallets_c = bundle_wallets.clone();
-                                let creator_c = state.creator_tracked_tokens.clone();
-                                let grad_c = state.graduating_tokens.clone();
+                                let state_c = state.clone();
+                                let wallets_c = slidefun_wallets.clone(); // use SF-specific amounts
 
                                 tokio::spawn(async move {
                                     if let Some((mint, creator, token_program)) =
@@ -195,34 +198,30 @@ pub async fn run(
                                         let is_creator_mode =
                                             cfg_c.snipe_mode.to_lowercase() == "listen_creator";
                                         if cfg_c.app.listen_creator || is_creator_mode {
-                                            if cfg_c.is_creator_tracked(&creator) {
-                                                log_info!("[LISTEN_CREATOR] 🎯 Match! Tracking token {} from creator {}", mint, creator);
-                                                creator_c.lock().await.insert(mint.clone());
-                                                grad_c.lock().await.insert(mint.clone());
+                                            if cfg_c.is_creator_tracked(&creator.to_string()) {
+                                                log_info!(
+                                                    "   [TRACK] Matches tracked creator: {}",
+                                                    creator
+                                                );
                                                 should_buy = true;
+                                                let mut s = state_c.creator_tracked_tokens.lock().await;
+                                                s.insert(mint.clone());
                                             }
                                         }
 
-                                        // 2. Check General Slide.fun Snipe (ONLY if mode is Slidefun/Both)
-                                        let smode = cfg_c.snipe_mode.to_lowercase();
-                                        if !should_buy && (smode == "slidefun" || smode == "both") {
-                                            if cfg_c.is_whitelisted(&mint) {
-                                                log_info!(
-                                                    "[SFSNIPE] 🎯 Match! Sniping {}...",
-                                                    mint
-                                                );
-                                                should_buy = true;
-                                            }
+                                        // 2. Auto Snipe All
+                                        if cfg_c.app.auto_snipe_all {
+                                            should_buy = true;
                                         }
 
                                         if !should_buy {
-                                            log_info!("   [SKIP] {} does not match target creators or whitelist", mint);
+                                            log_info!("   [SKIP] Creator {} not tracked. Set auto_snipe_all=true to snipe everything.", creator);
                                             return;
                                         }
 
                                         // Dedup
                                         {
-                                            let mut s = sniped_c.lock().await;
+                                            let mut s = state_c.sniped_tokens.lock().await;
                                             let key = format!("slidefun:{}", mint);
                                             if s.contains(&key) {
                                                 log_info!("   [SKIP] Already sniped: {}", mint);
@@ -235,12 +234,15 @@ pub async fn run(
                                         let rpc_m = rpc_c.clone();
                                         let cfg_m = cfg_c.clone();
                                         let mint_m = mint.clone();
+                                        let trades_m = state_c.trades.clone();
                                         tokio::spawn(async move {
                                             slidefun_snipe::handle_slidefun_buy(
                                                 &cfg_m,
                                                 rpc_m,
                                                 &mint_m,
                                                 token_program,
+                                                trades_m,
+                                                event_time,
                                             )
                                             .await;
                                         });
@@ -250,8 +252,8 @@ pub async fn run(
                                             let cfg_b = cfg_c.clone();
                                             let mint_b = mint.clone();
                                             let wallets_b = wallets_c.clone();
+                                            let trades_b = state_c.trades.clone();
                                             tokio::spawn(async move {
-                                                // Use cached fee_to to avoid 600ms RPC delay
                                                 if let Some(fee_to) = slidefun_snipe::get_cached_fee_to() {
                                                     let bh = get_blockhash();
                                                     bundle_buy::slidefun_bundle_buy(
@@ -261,6 +263,7 @@ pub async fn run(
                                                         token_program,
                                                         &fee_to,
                                                         bh,
+                                                        trades_b,
                                                     )
                                                     .await;
                                                 }
@@ -318,6 +321,7 @@ pub async fn run(
                         Some(("raydium", log)) => {
                             let logs_str = log.value.logs.join(" ");
                             let signature = log.value.signature.clone();
+                            let event_time = std::time::Instant::now(); // WS log detection time
 
                             let is_init = logs_str.contains("initialize2:") 
                                 || logs_str.contains("Initialize2")
@@ -333,19 +337,29 @@ pub async fn run(
 
                             let rpc_c = rpc_client.clone();
                             let cfg_c = config.clone();
-                            let ata_c = state.ata_pre_created_tokens.clone();
-                            let sniped_c = state.sniped_tokens.clone();
+                            let state_c = state.clone();
                             let wallets_c = bundle_wallets.clone();
 
                             tokio::spawn(async move {
                                 log_info!("[RAYDIUM] 🔍 Fetching pool info for TX...");
                                 match get_pool_info(&rpc_c, &signature, cfg_c.raydium_program()).await {
                                     Some(pool_info) => {
+                                        let pool_ready_time = std::time::Instant::now();
+                                        log_info!("[RAYDIUM] Pool info fetched in {}ms (from log detect)", event_time.elapsed().as_millis());
                                         let token_key = pool_info.base_mint.to_string();
                                         let pool_creator = pool_info.creator.to_string();
 
-                                        // Check wallet if auto_snipe_all is false
-                                        if !cfg_c.app.auto_snipe_all {
+                                        let mut is_tracked = false;
+                                        {
+                                            let s = state_c.creator_tracked_tokens.lock().await;
+                                            if s.contains(&token_key) {
+                                                is_tracked = true;
+                                                log_info!("   [!] Graduated tracked token detected on Raydium!");
+                                            }
+                                        }
+
+                                        // Check wallet if auto_snipe_all is false and token is not tracked
+                                        if !cfg_c.app.auto_snipe_all && !is_tracked {
                                             if let Some(add_wallet) = cfg_c.raydium_add_pool_wallet() {
                                                 if !add_wallet.is_empty() && pool_creator != add_wallet {
                                                     log_info!(
@@ -359,7 +373,7 @@ pub async fn run(
 
                                         // Dedup only — avoid double-buying the same pool.
                                         {
-                                            let mut s = sniped_c.lock().await;
+                                            let mut s = state_c.sniped_tokens.lock().await;
                                             let key = format!("raydium:{}", token_key);
                                             if s.contains(&key) {
                                                 log_info!(
@@ -371,7 +385,7 @@ pub async fn run(
                                             s.insert(key);
                                         }
 
-                                        let ata_pre = ata_c.lock().await.contains(&token_key);
+                                        let ata_pre = state_c.ata_pre_created_tokens.lock().await.contains(&token_key);
 
                                         log_info!(
                                         "[SNIPE] 🚀 New Raydium pool! Sniping: {} (ATA pre-created: {})",
@@ -383,12 +397,15 @@ pub async fn run(
                                         let cfg_m = cfg_c.clone();
                                         let rpc_m = rpc_c.clone();
                                         let pool_m = pool_info.clone();
+                                        let trades_m = state_c.trades.clone();
                                         tokio::spawn(async move {
                                             handle_buy(
                                                 &cfg_m,
                                                 rpc_m,
                                                 pool_m,
                                                 ata_pre,
+                                                trades_m,
+                                                pool_ready_time,
                                             )
                                             .await;
                                         });
@@ -397,11 +414,12 @@ pub async fn run(
                                         if !wallets_c.is_empty() && !cfg_c.dry_run {
                                             let cfg_b = cfg_c.clone();
                                             let wallets_b = wallets_c.clone();
+                                            let trades_b = state_c.trades.clone();
                                             tokio::spawn(async move {
                                                 let bh = get_blockhash();
                                                 let pool_arc = Arc::new(pool_info);
                                                 bundle_buy::raydium_bundle_buy(
-                                                    &cfg_b, &wallets_b, pool_arc, bh,
+                                                    &cfg_b, &wallets_b, pool_arc, bh, trades_b,
                                                 )
                                                 .await;
                                             });

@@ -25,6 +25,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as _;
 
 use crate::config::AppConfig;
+use crate::trades::TradesStore;
 
 pub type LogTx = broadcast::Sender<String>;
 
@@ -32,16 +33,18 @@ pub type LogTx = broadcast::Sender<String>;
 pub struct AppState {
     pub log_tx: LogTx,
     pub bot_active: Arc<AtomicBool>,
+    pub trades: Arc<TradesStore>,
 }
 
 /// Start the dashboard on port 8080. Call from main with tokio::spawn.
-pub async fn start(log_tx: LogTx, bot_active: Arc<AtomicBool>) {
-    let state = AppState { log_tx, bot_active };
+pub async fn start(log_tx: LogTx, bot_active: Arc<AtomicBool>, trades: Arc<TradesStore>) {
+    let state = AppState { log_tx, bot_active, trades };
     let app = Router::new()
         .route("/", get(serve_dashboard))
         .route("/api/config", get(get_config))
         .route("/api/config", post(save_config))
         .route("/api/logs", get(stream_logs))
+        .route("/api/trades", get(get_trades).delete(clear_trades))
         .route("/api/manual-bundle", post(manual_bundle_action))
         .route("/api/explanation", get(get_explanation))
         .route("/api/status", get(get_status).post(set_status))
@@ -95,6 +98,18 @@ async fn restart_bot(State(state): State<AppState>) -> impl IntoResponse {
     });
 
     Json(json!({ "ok": true, "message": "Restarting engine..." }))
+}
+
+/// GET /api/trades — returns trade history
+async fn get_trades(State(state): State<AppState>) -> impl IntoResponse {
+    let trades = state.trades.get_all().await;
+    Json(trades)
+}
+
+async fn clear_trades(State(state): State<AppState>) -> impl IntoResponse {
+    state.trades.clear_trades().await;
+    let _ = state.log_tx.send("[SYSTEM] 🗑️ Trade history cleared.".to_string());
+    Json(json!({ "ok": true }))
 }
 
 /// POST /api/check-wallet — validate a private key and return pubkey
@@ -480,6 +495,7 @@ async fn save_config(Json(incoming): Json<Value>) -> impl IntoResponse {
                         .to_string(),
                     private_key: pk,
                     sol_amount: w["sol_amount"].as_f64().unwrap_or(0.05),
+                    slidefun_sol_amount: w["slidefun_sol_amount"].as_f64().unwrap_or(0.05),
                     manual_sol_amount: w["manual_sol_amount"].as_f64().unwrap_or(0.1),
                     enabled: w["enabled"].as_bool().unwrap_or(true),
                 }
@@ -563,7 +579,10 @@ struct ManualBundleReq {
     wallet_amounts: Option<Vec<WalletAmount>>,
 }
 
-async fn manual_bundle_action(Json(req): Json<ManualBundleReq>) -> impl IntoResponse {
+async fn manual_bundle_action(
+    State(state): State<AppState>,
+    Json(req): Json<ManualBundleReq>,
+) -> impl IntoResponse {
     use crate::blockhash::get_blockhash;
     use crate::bundle_buy::{
         raydium_bundle_buy, raydium_bundle_sell, slidefun_bundle_buy, slidefun_bundle_sell,
@@ -635,6 +654,7 @@ async fn manual_bundle_action(Json(req): Json<ManualBundleReq>) -> impl IntoResp
 
     let action = req.action.clone();
     let percent = req.percent.unwrap_or(100.0);
+    let trades = state.trades.clone();
 
     tokio::spawn(async move {
         let bh = get_blockhash();
@@ -649,13 +669,14 @@ async fn manual_bundle_action(Json(req): Json<ManualBundleReq>) -> impl IntoResp
                         Pubkey::from_str(crate::constants::TOKEN_PROGRAM).unwrap(),
                         &fee_to,
                         bh,
+                        trades.clone(),
                     )
                     .await;
                 }
             }
             "raydium_buy" => {
                 if let Some(pool) = find_pool_by_mint(&rpc, &mint_pk, config.raydium_program()).await {
-                    raydium_bundle_buy(&config, &bundle_wallets, Arc::new(pool), bh).await;
+                    raydium_bundle_buy(&config, &bundle_wallets, Arc::new(pool), bh, trades.clone()).await;
                 }
             }
             "raydium_sell" => {

@@ -32,6 +32,7 @@
 
 use crate::config::Config;
 use crate::transaction::send_via_jito;
+use crate::trades::{Trade, TradesStore};
 use crate::{constants, log_info};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcSendTransactionConfig, RpcTransactionConfig};
@@ -263,6 +264,8 @@ pub async fn handle_slidefun_buy(
     rpc_client: Arc<RpcClient>,
     token_mint: &str,
     token_program_pk: Pubkey,
+    trades: Arc<TradesStore>,
+    event_time: std::time::Instant,
 ) {
     let user = config.keypair.pubkey();
     let sol_lamports = (config.slidefun_pump_amount * LAMPORTS_PER_SOL as f64) as u64;
@@ -403,6 +406,11 @@ pub async fn handle_slidefun_buy(
     for attempt in 1..=spam_count {
         let rpc_clone = rpc_client.clone();
         let tx_clone = tx.clone();
+        let trades_c = trades.clone();
+        let mint_c = token_mint.to_string();
+        let sol_c = config.slidefun_pump_amount;
+        let network_c = config.network.clone();
+        let wallet_c = config.keypair.pubkey().to_string();
 
         tokio::spawn(async move {
             // Send via RPC
@@ -415,7 +423,34 @@ pub async fn handle_slidefun_buy(
                 .send_transaction_with_config(&tx_clone, config_rpc)
                 .await
             {
-                Ok(sig) => log_info!("[SFSNIPE] RPC attempt {} OK: {}", attempt, sig),
+                Ok(sig) => {
+                    let cluster_suffix = if network_c.to_lowercase() == "devnet" { "?cluster=devnet" } else { "" };
+                    log_info!("[SFSNIPE] RPC attempt {} OK: {}{}", attempt, sig, cluster_suffix);
+
+                    // Only record once — on first successful attempt (same sig for all retries)
+                    if attempt == 1 {
+                        let latency = event_time.elapsed().as_millis() as u64;
+                        let t_store = trades_c.clone();
+                        let t_sig = sig.to_string();
+                        let t_mint = mint_c.clone();
+                        let t_sol = sol_c;
+                        let t_wallet = wallet_c.clone();
+                        tokio::spawn(async move {
+                            t_store.add_trade(Trade {
+                                id: t_sig,
+                                timestamp: chrono::Utc::now(),
+                                mint: t_mint,
+                                mode: "slidefun".to_string(),
+                                sol_amount: t_sol,
+                                token_amount: 0.0,
+                                status: "pending".to_string(),
+                                latency_ms: Some(latency),
+                                wallet: Some(t_wallet),
+                                wallet_type: Some("main".to_string()),
+                            }).await;
+                        });
+                    }
+                }
                 Err(e) => {
                     if attempt == 1 {
                         log_info!("[SFSNIPE] RPC attempt {} preflight error: {}", attempt, e);

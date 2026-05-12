@@ -25,18 +25,17 @@ pub struct WalletEntry {
     pub label: String,
     pub private_key: String,
     #[serde(default = "default_sol_amount")]
-    pub sol_amount: f64,
+    pub sol_amount: f64,          // Raydium snipe amount
+    #[serde(default = "default_slidefun_amount")]
+    pub slidefun_sol_amount: f64, // Slide.fun snipe amount
     #[serde(default = "default_manual_amount")]
     pub manual_sol_amount: f64,
     pub enabled: bool,
 }
 
-fn default_sol_amount() -> f64 {
-    0.05
-}
-fn default_manual_amount() -> f64 {
-    0.1
-}
+fn default_sol_amount() -> f64 { 0.05 }
+fn default_slidefun_amount() -> f64 { 0.05 }
+fn default_manual_amount() -> f64 { 0.1 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -113,6 +112,7 @@ impl Default for AppConfig {
                 label: "Main Wallet".to_string(),
                 private_key: "".to_string(),
                 sol_amount: 0.05,
+                slidefun_sol_amount: 0.05,
                 manual_sol_amount: 0.1,
                 enabled: true,
             },
@@ -196,14 +196,9 @@ impl AppConfig {
             main_wallet: WalletEntry {
                 label: "Main Wallet".to_string(),
                 private_key: env::var("PRIVATE_KEY").unwrap_or_default(),
-                sol_amount: env::var("MAIN_SOL_AMOUNT")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0.05),
-                manual_sol_amount: env::var("MAIN_MANUAL_AMOUNT")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0.1),
+                sol_amount: env::var("MAIN_SOL_AMOUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.05),
+                slidefun_sol_amount: env::var("SLIDEFUN_PUMP_AMOUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.05),
+                manual_sol_amount: env::var("MAIN_MANUAL_AMOUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.1),
                 enabled: true,
             },
             bundle_wallets: load_bundle_wallets_from_file(
@@ -270,7 +265,12 @@ impl Config {
             dry_run: app.dry_run,
             test_mode: app.test_mode,
             snipe_mode: app.snipe_mode.clone(),
-            slidefun_pump_amount: app.slidefun_pump_amount,
+            // Use main_wallet.slidefun_sol_amount if set, fallback to legacy slidefun_pump_amount
+            slidefun_pump_amount: if app.main_wallet.slidefun_sol_amount > 0.0 {
+                app.main_wallet.slidefun_sol_amount
+            } else {
+                app.slidefun_pump_amount
+            },
             network: app.network.clone(),
             helius_api_key: app.helius_api_key.clone(),
 
@@ -284,7 +284,7 @@ impl Config {
         Self::from_app(AppConfig::load())
     }
 
-    /// Return only the *enabled* bundle wallets as (Keypair, sol_amount).
+    /// Return only the *enabled* bundle wallets as (Keypair, sol_amount) for Raydium.
     pub fn enabled_bundle_keypairs(&self) -> Vec<(Keypair, f64)> {
         self.app
             .bundle_wallets
@@ -294,6 +294,21 @@ impl Config {
                 let bytes = bs58::decode(&w.private_key).into_vec().ok()?;
                 let keypair = Keypair::try_from(bytes.as_ref()).ok()?;
                 Some((keypair, w.sol_amount))
+            })
+            .collect()
+    }
+
+    /// Return only the *enabled* bundle wallets as (Keypair, sol_amount) for Slide.fun.
+    pub fn enabled_slidefun_keypairs(&self) -> Vec<(Keypair, f64)> {
+        self.app
+            .bundle_wallets
+            .iter()
+            .filter(|w| w.enabled && !w.private_key.is_empty())
+            .filter_map(|w| {
+                let bytes = bs58::decode(&w.private_key).into_vec().ok()?;
+                let keypair = Keypair::try_from(bytes.as_ref()).ok()?;
+                let amount = if w.slidefun_sol_amount > 0.0 { w.slidefun_sol_amount } else { w.sol_amount };
+                Some((keypair, amount))
             })
             .collect()
     }
@@ -484,6 +499,7 @@ fn load_bundle_wallets_from_file(path: &str, default_sol: f64) -> Vec<WalletEntr
                     label: format!("Sub-wallet {}", i + 1),
                     private_key: pk.to_string(),
                     sol_amount: entry["sol_amount"].as_f64().unwrap_or(default_sol),
+                    slidefun_sol_amount: entry["slidefun_sol_amount"].as_f64().unwrap_or(default_sol),
                     manual_sol_amount: entry["manual_sol_amount"].as_f64().unwrap_or(0.1),
                     enabled: true,
                 });
