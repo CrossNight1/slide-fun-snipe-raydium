@@ -2,17 +2,22 @@ use chrono::Local;
 use std::{
     fs::{self, OpenOptions},
     io::Write,
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
+    collections::VecDeque,
 };
 use tokio::sync::broadcast;
 
 /// Global broadcast channel — subscribers receive every log line.
 static LOG_TX: OnceLock<broadcast::Sender<String>> = OnceLock::new();
+/// Global buffer for recent logs
+static LOG_BUFFER: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
+const MAX_BUFFER: usize = 100;
 
 pub fn init_logger(capacity: usize) -> broadcast::Sender<String> {
     let _ = fs::create_dir_all("logger");
     let (tx, _) = broadcast::channel(capacity);
     let _ = LOG_TX.set(tx.clone());
+    let _ = LOG_BUFFER.set(Mutex::new(VecDeque::with_capacity(MAX_BUFFER)));
     tx
 }
 
@@ -41,8 +46,27 @@ pub fn log(message: &str) {
 
     // SSE broadcast (best-effort, no-panic if no subscribers)
     if let Some(tx) = LOG_TX.get() {
-        let _ = tx.send(log_line);
+        let _ = tx.send(log_line.clone());
     }
+
+    // Add to buffer
+    if let Some(buf_mutex) = LOG_BUFFER.get() {
+        if let Ok(mut buf) = buf_mutex.lock() {
+            buf.push_back(log_line);
+            if buf.len() > MAX_BUFFER {
+                buf.pop_front();
+            }
+        }
+    }
+}
+
+pub fn get_recent_logs() -> Vec<String> {
+    if let Some(buf_mutex) = LOG_BUFFER.get() {
+        if let Ok(buf) = buf_mutex.lock() {
+            return buf.iter().cloned().collect();
+        }
+    }
+    vec![]
 }
 
 #[macro_export]

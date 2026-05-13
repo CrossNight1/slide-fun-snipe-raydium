@@ -52,7 +52,7 @@ pub async fn start(log_tx: LogTx, bot_active: Arc<AtomicBool>, trades: Arc<Trade
         .route("/api/restart", post(restart_bot))
         .with_state(state);
 
-    let addr = "0.0.0.0:8080";
+    let addr = "127.0.0.1:8080";
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     println!("[WEB] Dashboard running at http://localhost:8080");
     axum::serve(listener, app).await.unwrap();
@@ -547,8 +547,20 @@ async fn stream_logs(
     State(state): State<AppState>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>> {
     let rx = state.log_tx.subscribe();
-    let stream = BroadcastStream::new(rx)
+    
+    // 1. Get recent logs from buffer
+    let recent_logs = crate::logger::get_recent_logs();
+    
+    // 2. Create initial events from buffer
+    let history = tokio_stream::iter(recent_logs.into_iter().map(|line| Ok(Event::default().data(line))));
+    
+    // 3. Followed by a separator if needed, or just the live stream
+    let broadcast_stream = BroadcastStream::new(rx)
         .filter_map(|result| result.ok().map(|line| Ok(Event::default().data(line))));
+
+    // Chain: History -> Live Stream
+    let stream = history.chain(broadcast_stream);
+
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 

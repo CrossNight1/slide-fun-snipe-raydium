@@ -1,58 +1,28 @@
-[2026-05-04 19:37:38.606] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:38.848] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:39.096] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:39.351] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:39.613] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:39.892] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:40.145] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:40.394] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:40.649] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:40.935] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:41.179] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:41.430] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:41.691] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:41.942] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:42.198] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:42.505] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:42.751] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:42.994] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:43.256] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:43.505] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:43.753] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:44.011] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:44.271] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:44.519] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:44.766] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:45.014] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:45.261] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-[2026-05-04 19:37:45.514] [WARN] Blockhash fetch error: HTTP status client error (401 Unauthorized) for url (https://mainnet.heli
-us-rpc.com/?api-key=your_helius_api_key_here)
-./start.sh: line 62: 72089 Killed: 9               ./target/release/slidefun-raydium-snipe
-leoinv@Vos-MacBook-Air-2 ~/Documents/CODE/slide-fun-snipe-raydium $
+[2026-05-13 15:19:57.790] ║   SLIDE-FUN → RAYDIUM SNIPER  v0.2.0    ║
+[2026-05-13 15:19:57.790] ╚══════════════════════════════════════════╝
+[2026-05-13 15:19:57.790]   Wallet      : FAXGWUTYPAjhJWAd4mNyhjQoUAH2PxFKm7V29jg1fBZt
+[2026-05-13 15:19:57.790]   Sub-wallets : 1
+[2026-05-13 15:19:57.790]   SOL/main    : 0.02 SOL
+[2026-05-13 15:19:57.790]   Jito tip    : 0.003 SOL
+[2026-05-13 15:19:57.790]   Priority fee: 100000 µ-lam
+[2026-05-13 15:19:57.790]   Snipe mode  : RAYDIUM_MIGRATE [default]
+[2026-05-13 15:19:57.790]   ？ LIVE MODE : ON — real trades ENABLED
+[2026-05-13 15:19:57.790]   ？ Dashboard : http://localhost:8080
+[2026-05-13 15:19:57.790]    [BUNDLE] 1 enabled sub-wallet(s) loaded (Raydium: 0.02 SOL each, SF: 0.02 SOL ea
+ch)
+[2026-05-13 15:19:57.793] [BUNDLE] Checking sub-wallet balances...
+[2026-05-13 15:19:57.968] [BUNDLE]   Wallet[0] EKdeMDvppCNA1YbwB46RtABzqFS6FFVNaXhCF6kNA8Rf: 0.1000 SOL
+[WEB] Dashboard running at http://localhost:8080
+[2026-05-13 15:19:57.970] [SYNC] Starting blockhash updater...
+[2026-05-13 15:19:58.305] [OK] Blockhash cache ready
+[2026-05-13 15:19:58.465] [WSOL] Insufficient balance for pre-funding (0.0000 SOL). Skipping.
+[2026-05-13 15:19:58.512] [SFSNIPE] Fee-to address cached: 7UgmDJSKWwn4y2YjbubFomFcJAf4oKHRBCh28khT6WqL
+[2026-05-13 15:19:58.512] [WS] Connecting to WebSocket...
+[2026-05-13 15:19:59.482] [OK] ✅ Dual-listener active:
+[2026-05-13 15:19:59.482]    [A] Slide.fun : 35gN3EctT3udQ5fWa1uQr7LP2tqN2zH8yyHmqCX5BKgy
+[2026-05-13 15:19:59.482]    [B] Raydium/Wallet: 9mvjFZGSMPLkn7xPSSwQ6NagRe32mPNjRCsp8GjbcQ4o
+[2026-05-13 15:19:59.482]    [C] Slidefun-create snipe: ACTIVE
+[2026-05-13 15:19:59.483]    [D] Listen-creator snipe : ACTIVE
+[2026-05-13 15:19:59.483] [OK] Waiting for events...
+
+

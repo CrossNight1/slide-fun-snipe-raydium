@@ -27,7 +27,7 @@
 use crate::{constants, log_info};
 use crate::config::Config;
 use crate::trades::{Trade, TradesStore};
-use crate::transaction::send_bundle_to_url;
+// use crate::transaction::send_bundle_to_url;
 use crate::types::PoolInfo;
 use bincode;
 use bs58;
@@ -327,10 +327,9 @@ async fn log_bundle_onchain_after_wait(
 /// → If any endpoint is rate-limited, the others will still accept the bundle.
 /// → First acceptance wins; subsequent acceptances are silently ignored.
 async fn fire_bundles(bundles: Vec<Vec<String>>) {
-    use constants::{jito_bundle_urls};
+    use crate::constants::jito_bundle_urls;
 
     for (i, bundle) in bundles.into_iter().enumerate() {
-        // Fire to all endpoints in parallel
         let urls = jito_bundle_urls();
         let futs: Vec<_> = urls
             .iter()
@@ -338,7 +337,7 @@ async fn fire_bundles(bundles: Vec<Vec<String>>) {
                 let b = bundle.clone();
                 let url_str = url.clone();
                 async move {
-                    let result = send_bundle_to_url(&b, &url_str).await;
+                    let result = crate::transaction::send_bundle_to_url(&b, &url_str).await;
                     (url_str, result)
                 }
             })
@@ -347,6 +346,8 @@ async fn fire_bundles(bundles: Vec<Vec<String>>) {
         let results = futures::future::join_all(futs).await;
 
         let mut accepted = false;
+        let mut errors = Vec::new();
+
         for (region, result) in &results {
             match result {
                 Ok(id) => {
@@ -363,11 +364,17 @@ async fn fire_bundles(bundles: Vec<Vec<String>>) {
                         );
                         accepted = true;
                     }
-                    // else: other endpoints also accepted — silent, avoid log spam
                 }
-                Err(e) => log_info!("[BUNDLE] Bundle[{}] → {} ❌ {}", i, region, e),
+                Err(e) => {
+                    // Suppress "already processed" logs if we already got an acceptance from another region
+                    let err_str = format!("{:?}", e);
+                    if !err_str.contains("already processed") {
+                        errors.push((region, err_str));
+                    }
+                }
             }
         }
+
         if !accepted {
             log_info!("[BUNDLE] Bundle[{}] → ❌ ALL endpoints rejected/rate-limited", i);
         }
@@ -413,23 +420,44 @@ fn pack_into_bundles(
 ///   5. Retry up to MAX_RETRIES times for wallets that didn't buy.
 pub async fn raydium_bundle_buy(
     config: &Config,
-    wallets: &[(Keypair, f64)],
+    sub_wallets: &[(Keypair, f64)],
     pool_info: Arc<PoolInfo>,
     blockhash: Hash,
     trades: Arc<TradesStore>,
 ) {
-    if wallets.is_empty() {
-        log_info!("[BUNDLE] No bundle wallets loaded — skipping bundle buy");
-        return;
-    }
-
-    const MAX_RETRIES: usize = 2;       // up to 3 total attempts (1 initial + 2 retries)
-    const CONFIRM_WAIT_SECS: u64 = 6;   // seconds to wait before checking if bundles landed
+    const MAX_RETRIES: usize = 2;
+    const CONFIRM_WAIT_SECS: u64 = 6;
 
     let jito_tip_lamports = (config.jito_tip * LAMPORTS_PER_SOL as f64) as u64;
 
-    log_info!("[BUNDLE] 🚀 Raydium bundle buy: {} wallets (tip={} SOL each bundle)",
-        wallets.len(), config.jito_tip);
+    // Combine Main Wallet + Sub Wallets for a UNIFIED bundle (prevents conflicts)
+    let mut all_wallets = Vec::new();
+    let mut seen_pubkeys = std::collections::HashSet::new();
+    
+    // Add Main Wallet as index 0 (if sol_amount > 0 AND not already provided)
+    let main_in_sub = sub_wallets.iter().any(|(kp, _)| kp.pubkey() == config.keypair.pubkey());
+    if !main_in_sub && config.sol_amount > 0.0 {
+        all_wallets.push((&config.keypair, config.sol_amount, "main"));
+        seen_pubkeys.insert(config.keypair.pubkey());
+    }
+    
+    // Add Sub Wallets (with strict deduplication)
+    for (kp, sol) in sub_wallets {
+        if seen_pubkeys.insert(kp.pubkey()) {
+            let role = if kp.pubkey() == config.keypair.pubkey() { "main" } else { "sub" };
+            all_wallets.push((kp, *sol, role));
+        } else {
+            log_info!("[BUNDLE] Skipping duplicate wallet: {}", kp.pubkey());
+        }
+    }
+
+    if all_wallets.is_empty() {
+        log_info!("[BUNDLE] No wallets to buy with — aborting");
+        return;
+    }
+
+    log_info!("[BUNDLE] 🚀 Unified Raydium bundle buy: {} wallet(s) (Main + {} Sub)",
+        all_wallets.len(), sub_wallets.len());
 
     // RPC client for balance checks / fresh blockhash on retry
     let base_url = if config.network.to_lowercase() == "devnet" {
@@ -441,18 +469,16 @@ pub async fn raydium_bundle_buy(
     let rpc = Arc::new(RpcClient::new(rpc_url));
 
     // Track which wallets have confirmed their buy
-    let mut wallet_bought: Vec<bool> = vec![false; wallets.len()];
+    let mut wallet_bought: Vec<bool> = vec![false; all_wallets.len()];
 
-    // -- Attempt loop (initial fire + retries) --
     let mut current_bh = blockhash;
     for attempt in 0..=MAX_RETRIES {
-        // Find wallets that still need to buy
-        let pending: Vec<usize> = (0..wallets.len())
+        let pending: Vec<usize> = (0..all_wallets.len())
             .filter(|&i| !wallet_bought[i])
             .collect();
 
         if pending.is_empty() {
-            log_info!("[BUNDLE] 🎉 All {} wallets confirmed bought!", wallets.len());
+            log_info!("[BUNDLE] 🎉 All {} wallets confirmed bought!", all_wallets.len());
             break;
         }
         if attempt > 0 {
@@ -466,15 +492,15 @@ pub async fn raydium_bundle_buy(
         // Build buy TXs for pending wallets only
         let mut buy_txs: Vec<VersionedTransaction> = Vec::new();
         for &wi in &pending {
-            let (keypair, sol_amount) = &wallets[wi];
-            let sol_lamports = (*sol_amount * LAMPORTS_PER_SOL as f64) as u64;
+            let (keypair, sol_amount, _wtype) = all_wallets[wi];
+            let sol_lamports = (sol_amount * LAMPORTS_PER_SOL as f64) as u64;
             match build_raydium_buy_tx_for_wallet(
                 keypair, &pool_info, sol_lamports, 0,
-                config.cu_limit, config.priority_fee, current_bh,
+                config.cu_limit + attempt as u32, config.priority_fee, current_bh,
             ) {
                 Some(tx) => {
                     let bytes = bincode::serialize(&tx).unwrap_or_default();
-                    log_info!("[BUNDLE]   Wallet[{}] {} → {} bytes ({} SOL)",
+                    log_info!("[BUNDLE]   Wallet[{}] {} → {} bytes ({:.2} SOL)",
                         wi, keypair.pubkey(), bytes.len(), sol_amount);
                     buy_txs.push(tx);
                 }
@@ -501,8 +527,9 @@ pub async fn raydium_bundle_buy(
                 let wi = pending[idx];
                 let trades_c = trades.clone();
                 let mint_c = pool_info.base_mint.to_string();
-                let sol_c = wallets[wi].1;
-                let wallet_c = wallets[wi].0.pubkey().to_string();
+                let sol_c = all_wallets[wi].1;
+                let wallet_c = all_wallets[wi].0.pubkey().to_string();
+                let wtype_c = all_wallets[wi].2.to_string();
                 let network_c = config.network.clone();
                 let sent_c = sent_set.clone();
                 let h = tokio::spawn(async move {
@@ -529,7 +556,7 @@ pub async fn raydium_bundle_buy(
                                 status: "pending".to_string(),
                                 latency_ms: None,
                                 wallet: Some(wallet_c),
-                                wallet_type: Some("sub".to_string()),
+                                wallet_type: Some(wtype_c),
                             }).await;
                         }
                         Err(e) => log_info!("[BUNDLE] Devnet TX Error: {:?}", e),
@@ -551,12 +578,13 @@ pub async fn raydium_bundle_buy(
         }
 
 
-        let bundles = pack_into_bundles(&buy_txs, &config.keypair, jito_tip_lamports, current_bh);
+        let adjusted_tip = jito_tip_lamports + (attempt as u64 * 10);
+        let bundles = pack_into_bundles(&buy_txs, &config.keypair, adjusted_tip, current_bh);
         log_bundle_solscan_links(
             &buy_txs,
             &pending,
             &config.keypair,
-            jito_tip_lamports,
+            adjusted_tip,
             current_bh,
         );
         log_info!("[BUNDLE] Firing {} bundle(s) (attempt {}/{})...",
@@ -572,7 +600,7 @@ pub async fn raydium_bundle_buy(
             &buy_txs,
             &pending,
             &config.keypair,
-            jito_tip_lamports,
+            jito_tip_lamports + (attempt as u64 * 10),
             current_bh,
         )
         .await;
@@ -592,12 +620,12 @@ pub async fn raydium_bundle_buy(
         }
 
         if attempt == MAX_RETRIES {
-            let unbought: Vec<usize> = (0..wallets.len()).filter(|&i| !wallet_bought[i]).collect();
+            let unbought: Vec<usize> = (0..all_wallets.len()).filter(|&i| !wallet_bought[i]).collect();
             if !unbought.is_empty() {
                 log_info!("[BUNDLE] ⚠️  {} wallet(s) still unconfirmed after {} attempts: {:?}",
                     unbought.len(), MAX_RETRIES + 1, unbought);
             } else {
-                log_info!("[BUNDLE] 🎉 All {} wallets confirmed!", wallets.len());
+                log_info!("[BUNDLE] 🎉 All {} wallets confirmed!", all_wallets.len());
             }
         }
     }
@@ -753,18 +781,13 @@ pub async fn raydium_bundle_sell(
 /// Same retry strategy as `raydium_bundle_buy`.
 pub async fn slidefun_bundle_buy(
     config: &Config,
-    wallets: &[(Keypair, f64)],
+    sub_wallets: &[(Keypair, f64)],
     token_mint: &str,
     token_program: Pubkey,
     fee_to: &Pubkey,
     blockhash: Hash,
     trades: Arc<TradesStore>,
 ) {
-    if wallets.is_empty() {
-        log_info!("[BUNDLE] No bundle wallets loaded — skipping bundle buy");
-        return;
-    }
-
     let token_mint_pk = match Pubkey::from_str(token_mint) {
         Ok(pk) => pk,
         Err(e) => { log_info!("[BUNDLE] Invalid token mint: {}", e); return; }
@@ -775,8 +798,30 @@ pub async fn slidefun_bundle_buy(
 
     let jito_tip_lamports = (config.jito_tip * LAMPORTS_PER_SOL as f64) as u64;
 
-    log_info!("[BUNDLE] 🚀 Slide.fun bundle buy: {} wallets (tip={} SOL each bundle)",
-        wallets.len(), config.jito_tip);
+    // Combine Main Wallet + Sub Wallets for a UNIFIED bundle
+    let mut all_wallets = Vec::new();
+    let mut seen_pubkeys = std::collections::HashSet::new();
+    let main_in_sub = sub_wallets.iter().any(|(kp, _)| kp.pubkey() == config.keypair.pubkey());
+    if !main_in_sub && config.slidefun_pump_amount > 0.0 {
+        all_wallets.push((&config.keypair, config.slidefun_pump_amount, "main"));
+        seen_pubkeys.insert(config.keypair.pubkey());
+    }
+    for (kp, sol) in sub_wallets {
+        if seen_pubkeys.insert(kp.pubkey()) {
+            let role = if kp.pubkey() == config.keypair.pubkey() { "main" } else { "sub" };
+            all_wallets.push((kp, *sol, role));
+        } else {
+            log_info!("[BUNDLE] Skipping duplicate wallet: {}", kp.pubkey());
+        }
+    }
+
+    if all_wallets.is_empty() {
+        log_info!("[BUNDLE] No wallets to buy with — aborting");
+        return;
+    }
+
+    log_info!("[BUNDLE] 🚀 Unified Slide.fun bundle buy: {} wallet(s) (Main + {} Sub)",
+        all_wallets.len(), sub_wallets.len());
 
     let base_url = if config.network.to_lowercase() == "devnet" {
         "devnet.helius-rpc.com"
@@ -786,13 +831,14 @@ pub async fn slidefun_bundle_buy(
     let rpc_url = format!("https://{}?api-key={}", base_url, config.helius_api_key);
     let rpc = Arc::new(RpcClient::new(rpc_url));
 
-    let mut wallet_bought: Vec<bool> = vec![false; wallets.len()];
+    // Track which wallets have confirmed their buy
+    let mut wallet_bought: Vec<bool> = vec![false; all_wallets.len()];
     let mut current_bh = blockhash;
 
     for attempt in 0..=MAX_RETRIES {
-        let pending: Vec<usize> = (0..wallets.len()).filter(|&i| !wallet_bought[i]).collect();
+        let pending: Vec<usize> = (0..all_wallets.len()).filter(|&i| !wallet_bought[i]).collect();
         if pending.is_empty() {
-            log_info!("[BUNDLE] 🎉 All {} wallets confirmed bought!", wallets.len());
+            log_info!("[BUNDLE] 🎉 All {} wallets confirmed bought!", all_wallets.len());
             break;
         }
 
@@ -807,16 +853,16 @@ pub async fn slidefun_bundle_buy(
 
         let mut buy_txs: Vec<VersionedTransaction> = Vec::new();
         for &wi in &pending {
-            let (keypair, sol_amount) = &wallets[wi];
-            let sol_lamports = (*sol_amount * LAMPORTS_PER_SOL as f64) as u64;
+            let (keypair, sol_amount, _wtype) = all_wallets[wi];
+            let sol_lamports = (sol_amount * LAMPORTS_PER_SOL as f64) as u64;
             let slidefun_program = config.slidefun_program();
             match build_slidefun_buy_tx_for_wallet(
                 keypair, &token_mint_pk, &token_program, fee_to, &slidefun_program, sol_lamports,
-                config.cu_limit, config.priority_fee, current_bh,
+                config.cu_limit + attempt as u32, config.priority_fee, current_bh,
             ) {
                 Some(tx) => {
                     let bytes = bincode::serialize(&tx).unwrap_or_default();
-                    log_info!("[BUNDLE]   Wallet[{}] {} → {} bytes ({} SOL)",
+                    log_info!("[BUNDLE]   Wallet[{}] {} → {} bytes ({:.2} SOL)",
                         wi, keypair.pubkey(), bytes.len(), sol_amount);
                     buy_txs.push(tx);
                 }
@@ -839,8 +885,9 @@ pub async fn slidefun_bundle_buy(
                 let wi = pending[idx];
                 let trades_c = trades.clone();
                 let mint_c = token_mint.to_string();
-                let sol_c = wallets[wi].1;
-                let wallet_c = wallets[wi].0.pubkey().to_string();
+                let sol_c = all_wallets[wi].1;
+                let wallet_c = all_wallets[wi].0.pubkey().to_string();
+                let wtype_c = all_wallets[wi].2.to_string();
                 let network_c = config.network.clone();
                 let sent_c = sent_set.clone();
                 let h = tokio::spawn(async move {
@@ -867,7 +914,7 @@ pub async fn slidefun_bundle_buy(
                                 status: "pending".to_string(),
                                 latency_ms: None,
                                 wallet: Some(wallet_c),
-                                wallet_type: Some("sub".to_string()),
+                                wallet_type: Some(wtype_c),
                             }).await;
                         }
                         Err(e) => log_info!("[BUNDLE] Devnet SF TX Error: {:?}", e),
@@ -887,12 +934,13 @@ pub async fn slidefun_bundle_buy(
         }
 
 
-        let bundles = pack_into_bundles(&buy_txs, &config.keypair, jito_tip_lamports, current_bh);
+        let adjusted_tip = jito_tip_lamports + (attempt as u64 * 10);
+        let bundles = pack_into_bundles(&buy_txs, &config.keypair, adjusted_tip, current_bh);
         log_bundle_solscan_links(
             &buy_txs,
             &pending,
             &config.keypair,
-            jito_tip_lamports,
+            adjusted_tip,
             current_bh,
         );
         log_info!("[BUNDLE] Firing {} bundle(s) (attempt {}/{})...",
@@ -907,7 +955,7 @@ pub async fn slidefun_bundle_buy(
             &buy_txs,
             &pending,
             &config.keypair,
-            jito_tip_lamports,
+            jito_tip_lamports + (attempt as u64 * 10),
             current_bh,
         )
         .await;
@@ -927,7 +975,7 @@ pub async fn slidefun_bundle_buy(
         }
 
         if attempt == MAX_RETRIES {
-            let unbought: Vec<usize> = (0..wallets.len()).filter(|&i| !wallet_bought[i]).collect();
+            let unbought: Vec<usize> = (0..all_wallets.len()).filter(|&i| !wallet_bought[i]).collect();
             if !unbought.is_empty() {
                 log_info!("[BUNDLE] ⚠️  {} wallet(s) unconfirmed after {} attempts: {:?}",
                     unbought.len(), MAX_RETRIES + 1, unbought);

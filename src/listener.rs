@@ -31,7 +31,7 @@ use tokio::{
 };
 
 use crate::{
-    blockhash::get_blockhash, bundle_buy, config::Config, graduation, handler::handle_buy,
+    blockhash::get_blockhash, bundle_buy, config::Config, graduation,
     log_info, pool::get_pool_info, slidefun_snipe, trades::TradesStore,
 };
 
@@ -82,7 +82,7 @@ pub async fn run(
 
     let slidefun_program = config.slidefun_program();
     let amm_program = config.raydium_program();
-    let amm_program_str = amm_program.to_string();
+    let _amm_program_str = amm_program.to_string();
 
     // Cache Slide.fun fee_to at startup
     crate::slidefun_snipe::pre_fetch_fee_to(&rpc_client, &slidefun_program).await;
@@ -175,7 +175,7 @@ pub async fn run(
                                 )
                             {
                                 let signature = log.value.signature.clone();
-                                let event_time = std::time::Instant::now();
+                                let _event_time = std::time::Instant::now();
                                 log_info!("[SFSNIPE] 🆕 New Slide.fun token! TX: {}", signature);
 
                                 let rpc_c = rpc_client.clone();
@@ -230,25 +230,8 @@ pub async fn run(
                                             s.insert(key);
                                         }
 
-                                        // Main buy
-                                        let rpc_m = rpc_c.clone();
-                                        let cfg_m = cfg_c.clone();
-                                        let mint_m = mint.clone();
-                                        let trades_m = state_c.trades.clone();
-                                        tokio::spawn(async move {
-                                            slidefun_snipe::handle_slidefun_buy(
-                                                &cfg_m,
-                                                rpc_m,
-                                                &mint_m,
-                                                token_program,
-                                                trades_m,
-                                                event_time,
-                                            )
-                                            .await;
-                                        });
-
-                                        // Bundle buy
-                                        if !wallets_c.is_empty() && !cfg_c.dry_run {
+                                        // Unified execution (Main Wallet + Sub Wallets)
+                                        if !cfg_c.dry_run {
                                             let cfg_b = cfg_c.clone();
                                             let mint_b = mint.clone();
                                             let wallets_b = wallets_c.clone();
@@ -344,7 +327,7 @@ pub async fn run(
                                 log_info!("[RAYDIUM] 🔍 Fetching pool info for TX...");
                                 match get_pool_info(&rpc_c, &signature, cfg_c.raydium_program()).await {
                                     Some(pool_info) => {
-                                        let pool_ready_time = std::time::Instant::now();
+                                        let _pool_ready_time = std::time::Instant::now();
                                         log_info!("[RAYDIUM] Pool info fetched in {}ms (from log detect)", event_time.elapsed().as_millis());
                                         let token_key = pool_info.base_mint.to_string();
                                         let pool_creator = pool_info.creator.to_string();
@@ -393,25 +376,8 @@ pub async fn run(
                                         ata_pre
                                     );
 
-                                        // Main wallet buy
-                                        let cfg_m = cfg_c.clone();
-                                        let rpc_m = rpc_c.clone();
-                                        let pool_m = pool_info.clone();
-                                        let trades_m = state_c.trades.clone();
-                                        tokio::spawn(async move {
-                                            handle_buy(
-                                                &cfg_m,
-                                                rpc_m,
-                                                pool_m,
-                                                ata_pre,
-                                                trades_m,
-                                                pool_ready_time,
-                                            )
-                                            .await;
-                                        });
-
-                                        // Bundle buy (sub-wallets)
-                                        if !wallets_c.is_empty() && !cfg_c.dry_run {
+                                        // Unified execution (Main Wallet + Sub Wallets)
+                                        if !cfg_c.dry_run {
                                             let cfg_b = cfg_c.clone();
                                             let wallets_b = wallets_c.clone();
                                             let trades_b = state_c.trades.clone();
