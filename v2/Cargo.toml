@@ -1,0 +1,50 @@
+[package]
+name = "slidefun-raydium-snipe"
+version = "0.2.0"
+edition = "2021"
+default-run = "slidefun-raydium-snipe"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Solana SDK
+solana-sdk = "2.2"
+solana-client = "2.2"
+solana-transaction-status-client-types = "2.2"
+solana-program = "2.2"
+solana-account-decoder = "2.2"
+
+# SPL Token
+spl-associated-token-account = "7"
+spl-token = "7"
+
+# Futures
+futures = "0.3"
+futures-util = "0.3"
+
+# HTTP client (Jito) + Web server (dashboard)
+reqwest = { version = "0.12", features = ["json"] }
+axum = { version = "0.7", features = ["macros"] }
+tower-http = { version = "0.5", features = ["cors"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+bs58 = "0.5"
+
+# Environment (kept for .env fallback)
+dotenvy = "0.15"
+
+# Error handling
+anyhow = "1"
+
+# Lazy static
+lazy_static = "1"
+
+# Timestamp
+chrono = { version = "0.4", features = ["serde"] }
+
+base64 = "0.22.1"

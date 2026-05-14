@@ -1,7 +1,22 @@
-/target
-*.log
-.env
-wallets.json
-config.json
-wallets_private_keys.json
-/logger/
+# Build artifacts
+**/target/
+**/node_modules/
+
+# Sensitive configuration (Contains Private Keys)
+**/config.json
+**/wallets.json
+**/wallets_private_keys.json
+**/.env
+
+# Logs and temporary files
+**/*.log
+**/screen_log*.txt
+**/.DS_Store
+
+# Data files
+**/trades.json
+**/scratch/
+
+# IDE files
+**/.vscode/
+**/.idea/

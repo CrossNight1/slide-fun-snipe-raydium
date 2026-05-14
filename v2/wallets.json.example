@@ -1,0 +1,10 @@
+[
+  {
+    "private_key": "PASTE-SUB-WALLET-1-KEY-HERE",
+    "sol_amount": 0.05
+  },
+  {
+    "private_key": "PASTE-SUB-WALLET-2-KEY-HERE",
+    "sol_amount": 0.05
+  }
+]

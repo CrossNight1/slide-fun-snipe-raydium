@@ -1,0 +1,50 @@
+    Checking slidefun-raydium-snipe v0.2.0 (/Users/leoinv/Documents/CODE/slide-fun-snipe-raydium_v2)
+error: expected one of `.`, `;`, `?`, `}`, or an operator, found `,`
+   --> src/handler.rs:119:48
+    |
+119 |         "[SNIPE] 🚀 FIRING TX - {} instructions",
+    |                                                 ^ expected one of `.`, `;`, `?`, `}`, or an operator
+
+error[E0425]: cannot find value `bundles` in this scope
+   --> src/bundle_buy.rs:591:13
+    |
+591 |             bundles.len(), attempt + 1, MAX_RETRIES + 1);
+    |             ^^^^^^^ help: a local variable with a similar name exists: `handles`
+
+error[E0425]: cannot find value `bundles` in this scope
+   --> src/bundle_buy.rs:592:22
+    |
+592 |         fire_bundles(bundles).await;
+    |                      ^^^^^^^ help: a local variable with a similar name exists: `handles`
+
+error[E0425]: cannot find value `network_c` in this scope
+   --> src/slidefun_snipe.rs:425:45
+    |
+425 |                     let cluster_suffix = if network_c.to_lowercase() == "devnet" { "?cluster=devnet" } else { "" };
+    |                                             ^^^^^^^^^ not found in this scope
+
+warning: unused import: `Trade`
+ --> src/handler.rs:7:14
+  |
+7 |     trades::{Trade, TradesStore}, transaction::build_swap_instruction, types::PoolInfo,
+  |              ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `rpc_config::RpcSendTransactionConfig`
+ --> src/handler.rs:9:57
+  |
+9 | use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
+  |                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `system_instruction`
+  --> src/handler.rs:18:5
+   |
+18 |     system_instruction,
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::transaction::send_via_jito`
+  --> src/slidefun_snipe.rs:34:5
+   |
+34 | use crate::transaction::send_via_jito;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
